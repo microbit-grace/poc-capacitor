@@ -1,9 +1,19 @@
-import type { CapacitorConfig } from '@capacitor/cli';
+import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: 'apps.poc.capacitor',
-  appName: 'apps-poc-capacitor',
-  webDir: 'dist'
+  appId: "apps.poc.capacitor",
+  appName: "apps-poc-capacitor",
+  webDir: "dist",
+  plugins: {
+    BluetoothLe: {
+      displayStrings: {
+        scanning: "Scanning...",
+        cancel: "Cancel",
+        availableDevices: "Available devices",
+        noDeviceFound: "No device found",
+      },
+    },
+  },
 };
 
 export default config;

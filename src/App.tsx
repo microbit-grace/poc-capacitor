@@ -1,6 +1,9 @@
 import { useCallback, useState } from "react";
 import "./App.css";
 import { MakeCodeFrame, Project } from "@microbit/makecode-embed/react";
+import { Capacitor } from "@capacitor/core";
+import { scan } from "./ble";
+import { ScanResult } from "@capacitor-community/bluetooth-le";
 
 const starterProject = {
   text: {
@@ -15,24 +18,48 @@ const starterProject = {
 
 function App() {
   const [open, setOpen] = useState<boolean>(false);
+  const [scanResults, setScanResults] = useState<ScanResult[]>([]);
   const initialProject = useCallback(async () => [starterProject], []);
   const handleClose = useCallback(() => {
     setOpen(false);
   }, []);
-  const flashMicrobit = useCallback(
+  const handleDownload = useCallback(
     (download: { name: string; hex: string }) => {
       console.log(download);
       setOpen(true);
     },
     []
   );
+  const handleConnect = useCallback(async () => {
+    const onScanResult = (res: ScanResult) => {
+      setScanResults(Array.from(new Set([res, ...scanResults])));
+    };
+    await scan(onScanResult);
+  }, [scanResults]);
 
   return (
     <>
-      <dialog open={open} onCancel={handleClose}>
+      <dialog
+        open={open}
+        onCancel={handleClose}
+        style={{ maxWidth: "80%", textAlign: "left" }}
+      >
         <h1 style={{ fontSize: 20 }}>Flash micro:bit?</h1>
+        {Capacitor.getPlatform() === "web" && (
+          <>
+            <p>You are currently viewing this app on the web.</p>
+            <p>
+              No need to test how we can flash your project. We can flash your
+              MakeCode project like we do in ml-trainer and perhaps use the
+              connection library.
+            </p>
+          </>
+        )}
+        <p>{JSON.stringify(scanResults)}</p>
         <div style={{ display: "flex", gap: "10px" }}>
-          <button>Connect to micro:bit</button>
+          {Capacitor.getPlatform() !== "web" && (
+            <button onClick={handleConnect}>Connect to micro:bit</button>
+          )}
           <button onClick={handleClose}>Close</button>
         </div>
       </dialog>
@@ -41,7 +68,7 @@ function App() {
         controller={2}
         loading="eager"
         initialProjects={initialProject}
-        onDownload={flashMicrobit}
+        onDownload={handleDownload}
       />
     </>
   );
