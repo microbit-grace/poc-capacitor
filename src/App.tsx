@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import "./App.css";
-import { MakeCodeFrame, Project } from "@microbit/makecode-embed/react";
+import { MakeCodeFrame, MakeCodeProject,  } from "@microbit/makecode-embed";
 import { Capacitor } from "@capacitor/core";
 import { scan } from "./ble";
 import { ScanResult } from "@capacitor-community/bluetooth-le";
@@ -14,7 +14,7 @@ const starterProject = {
     "pxt.json":
       '{\n    "name": "Untitled",\n    "dependencies": {\n        "core": "*"\n , "radio": "*"\n     },\n    "description": "",\n    "files": [\n        "main.blocks",\n        "main.ts",\n        "README.md"\n    ],\n    "preferredEditor": "blocksprj"\n}',
   },
-} as Project;
+} as MakeCodeProject;
 
 function App() {
   const [open, setOpen] = useState<boolean>(false);

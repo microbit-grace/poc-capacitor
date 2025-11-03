@@ -11,7 +11,7 @@
 		<string>bluetooth-central</string>
 	</array>
 	<key>CFBundleDisplayName</key>
-        <string>apps-poc-capacitor</string>
+        <string>poc-capacitor</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

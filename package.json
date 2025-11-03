@@ -1,5 +1,5 @@
 {
-  "name": "apps-poc-capacitor",
+  "name": "poc-capacitor",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -15,7 +15,7 @@
     "@capacitor/android": "^6.2.0",
     "@capacitor/core": "^6.2.0",
     "@capacitor/ios": "^6.2.0",
-    "@microbit/makecode-embed": "^0.0.0-alpha.7",
+    "@microbit/makecode-embed": "file:../makecode-embed/microbit-makecode-embed-0.0.0.tgz",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

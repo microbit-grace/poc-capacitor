@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "apps.poc.capacitor",
-  appName: "apps-poc-capacitor",
+  appName: "poc-capacitor",
   webDir: "dist",
   plugins: {
     BluetoothLe: {
