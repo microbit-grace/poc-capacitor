@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import "./App.css";
-import { MakeCodeFrame, MakeCodeProject,  } from "@microbit/makecode-embed";
+import { MakeCodeFrame, MakeCodeProject } from "@microbit/makecode-embed";
 import { Capacitor } from "@capacitor/core";
 import { scan } from "./ble";
 import { ScanResult } from "@capacitor-community/bluetooth-le";
@@ -49,9 +49,8 @@ function App() {
           <>
             <p>You are currently viewing this app on the web.</p>
             <p>
-              No need to test how we can flash your project. We can flash your
-              MakeCode project like we do in ml-trainer and perhaps use the
-              connection library.
+              No need POC. We can flash your MakeCode project via the connection
+              library.
             </p>
           </>
         )}
