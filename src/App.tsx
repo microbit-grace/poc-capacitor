@@ -1,9 +1,10 @@
-import { useCallback, useState } from "react";
-import "./App.css";
-import { MakeCodeFrame, MakeCodeProject } from "@microbit/makecode-embed";
 import { Capacitor } from "@capacitor/core";
-import { scan } from "./ble";
-import { ScanResult } from "@capacitor-community/bluetooth-le";
+import { MakeCodeFrame, MakeCodeProject } from "@microbit/makecode-embed";
+import { useCallback, useMemo, useState } from "react";
+import "./App.css";
+import BluetoothAndroid from "./bluetoothAndroid";
+import Flasher from "./flasher";
+import { Progress } from "./model";
 
 const starterProject = {
   text: {
@@ -17,8 +18,14 @@ const starterProject = {
 } as MakeCodeProject;
 
 function App() {
+  const ble = useMemo(() => new BluetoothAndroid(), []);
+  const flasher = useMemo(() => new Flasher(ble), [ble]);
+
   const [open, setOpen] = useState<boolean>(false);
-  const [scanResults, setScanResults] = useState<ScanResult[]>([]);
+  const [message, setMessage] = useState<string>(
+    "Triple tap reset button to enter Bluetooth pairing mode."
+  );
+
   const initialProject = useCallback(async () => [starterProject], []);
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -30,12 +37,13 @@ function App() {
     },
     []
   );
+  const handleProgress: Progress = useCallback((progressStage) => {
+    setMessage(progressStage)
+  }, [])
   const handleConnect = useCallback(async () => {
-    const onScanResult = (res: ScanResult) => {
-      setScanResults(Array.from(new Set([res, ...scanResults])));
-    };
-    await scan(onScanResult);
-  }, [scanResults]);
+    const flashResult = await flasher.flash(handleProgress)
+    setMessage(flashResult)
+  }, [flasher, handleProgress]);
 
   return (
     <>
@@ -54,7 +62,7 @@ function App() {
             </p>
           </>
         )}
-        <p>{JSON.stringify(scanResults)}</p>
+        <p>{message}</p>
         <div style={{ display: "flex", gap: "10px" }}>
           {Capacitor.getPlatform() !== "web" && (
             <button onClick={handleConnect}>Connect to micro:bit</button>
