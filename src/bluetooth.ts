@@ -1,4 +1,6 @@
-import { BleClientInterface, BleDevice } from "@capacitor-community/bluetooth-le";
+import { BleClient, BleClientInterface, BleDevice } from "@capacitor-community/bluetooth-le";
+import { Capacitor } from "@capacitor/core";
+import BluetoothConnection from "./bluetoothConnection";
 
 export enum BluetoothInitializationResult {
   MissingPermissions = "MissingPermissions",
@@ -34,7 +36,111 @@ export interface BluetoothDevice {
   /**
    * Connects with device.
    * 
-   * @returns true if successful or false if unsuccessful.
+   * @returns BluetoothConnection if successful, otherwise null.
    */
-  connect(device: BleDevice): Promise<boolean>;
+  connect(device: BleDevice): Promise<BluetoothConnection | null>;
+
+  disconnect(deviceId: string): Promise<void>
 }
+
+
+
+const bondingTimeoutInMs = 10_000;
+const connectTimeoutInMs = 10_000;
+
+class Bluetooth implements BluetoothDevice {
+  client: BleClientInterface = BleClient;
+
+  constructor() {}
+
+  async initialize(): Promise<BluetoothInitializationResult> {
+    // Check if location is enabled.
+    if (Capacitor.getPlatform() === "android") {
+      const isLocationEnabled = await BleClient.isLocationEnabled();
+      if (!isLocationEnabled) {
+        return BluetoothInitializationResult.MissingPermissions;
+      }
+    }
+    await BleClient.initialize({ androidNeverForLocation: true });
+    // Check if Bluetooth is enabled.
+    const isBluetoothEnabled = await BleClient.isEnabled();
+    if (!isBluetoothEnabled) {
+      return BluetoothInitializationResult.BluetoothDisabled;
+    }
+    return BluetoothInitializationResult.Success;
+  }
+
+  private async checkBondedDevices(predicate: (device: BleDevice) => boolean) {
+    const bondedDevices = await BleClient.getBondedDevices();
+    const result = bondedDevices.find(predicate);
+    console.log(
+      result === null
+        ? "No matching bonded device"
+        : "Found matching bonded device"
+    );
+    return result;
+  }
+
+  async findMatchingDevice(namePrefix: string): Promise<BleDevice | undefined> {
+    // Check for existing bonded devices.
+    const bonded = await this.checkBondedDevices(
+      getDevicePredicate(namePrefix)
+    );
+    if (bonded) {
+      return bonded;
+    }
+
+    // Scan for matching device.
+    // TODO: Scan needs timing out.
+    const scanPromise: Promise<BleDevice> = new Promise((res) =>
+      BleClient.requestLEScan({ namePrefix }, async (result) => {
+        await BleClient.stopLEScan();
+        res(result.device);
+      })
+    );
+    return await Promise.race([scanPromise]);
+  }
+
+  async bond(device: BleDevice): Promise<boolean> {
+    try {
+      const deviceId = device.deviceId;
+      const isAlreadyBonded = await BleClient.isBonded(deviceId);
+      if (isAlreadyBonded) {
+        return true;
+      }
+      await BleClient.createBond(deviceId, { timeout: bondingTimeoutInMs });
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
+  }
+
+  async connect(device: BleDevice): Promise<BluetoothConnection | null> {
+    try {
+      const onDisconnected = (deviceId: string) => {
+        console.log(`Disconnected with device id: ${deviceId}`);
+      };
+      await BleClient.connect(device.deviceId, onDisconnected, {
+        timeout: connectTimeoutInMs,
+      });
+      return new BluetoothConnection(device);
+    } catch (error) {
+      console.error(error);
+      return null;
+    }
+  }
+
+  async disconnect(deviceId: string): Promise<void> {
+    await BleClient.disconnect(deviceId);
+  }
+}
+
+const getDevicePredicate = (namePrefix: string) => {
+  return (device: BleDevice) => {
+    const name = device.name;
+    return !!name && name.startsWith(namePrefix);
+  };
+};
+
+export default Bluetooth;

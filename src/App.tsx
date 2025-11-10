@@ -1,10 +1,12 @@
 import { Capacitor } from "@capacitor/core";
 import { MakeCodeFrame, MakeCodeProject } from "@microbit/makecode-embed";
-import { useCallback, useMemo, useState } from "react";
+import { ReactNode, useCallback, useMemo, useState } from "react";
 import "./App.css";
-import BluetoothAndroid from "./bluetoothAndroid";
-import Flasher from "./flasher";
-import { Progress } from "./model";
+import Flasher from "./flashing";
+import { FlashProgressStage, FlashResult, Progress, Step } from "./model";
+import Bluetooth from "./bluetooth";
+import FullFlasher from "./flashingFull";
+import Dfu from "./dfu";
 
 const starterProject = {
   text: {
@@ -18,67 +20,241 @@ const starterProject = {
 } as MakeCodeProject;
 
 function App() {
-  const ble = useMemo(() => new BluetoothAndroid(), []);
-  const flasher = useMemo(() => new Flasher(ble), [ble]);
-
-  const [open, setOpen] = useState<boolean>(false);
-  const [message, setMessage] = useState<string>(
-    "Triple tap reset button to enter Bluetooth pairing mode."
+  const ble = useMemo(() => new Bluetooth(), []);
+  const flasher = useMemo(
+    () => new Flasher(ble, new FullFlasher(new Dfu())),
+    [ble]
   );
+  const platform = Capacitor.getPlatform();
+  const [open, setOpen] = useState<boolean>(false);
+  const [step, setStep] = useState<Step>({ name: "initial" });
+  const [hex, setHex] = useState<null | { name: string; hex: string }>(null);
 
   const initialProject = useCallback(async () => [starterProject], []);
   const handleClose = useCallback(() => {
     setOpen(false);
+    setStep({ name: "initial" });
   }, []);
+  const updateStep: Progress = useCallback((progressStage, progress) => {
+    const message = {
+      [FlashProgressStage.Initialize]: "Checking permissions",
+      [FlashProgressStage.FindDevice]: "Finding device",
+      [FlashProgressStage.Bond]: "Pairing",
+      [FlashProgressStage.Connecting]: "Connecting",
+      [FlashProgressStage.Partial]: "Sending code",
+      [FlashProgressStage.Full]:
+        "Sending code. This can take a while the first time but it will be quicker after that.",
+      [FlashProgressStage.Complete]: "Successfully downloaded",
+      [FlashProgressStage.Cancelled]: "Cancelled",
+      [FlashProgressStage.Failed]: "Failed",
+    }[progressStage];
+    setStep({ name: "flashing", progress, message });
+  }, []);
+
   const handleDownload = useCallback(
-    (download: { name: string; hex: string }) => {
-      console.log(download);
+    async (download: { name: string; hex: string }) => {
       setOpen(true);
+      setHex(download);
     },
     []
   );
-  const handleProgress: Progress = useCallback((progressStage) => {
-    setMessage(progressStage)
-  }, [])
-  const handleConnect = useCallback(async () => {
-    const flashResult = await flasher.flash(handleProgress)
-    setMessage(flashResult)
-  }, [flasher, handleProgress]);
+
+  const handleFlash = useCallback(async () => {
+    if (!hex) {
+      throw new Error("No hex file to flash");
+    }
+    const flashResult = await flasher.flash(hex.hex, updateStep);
+    if (flashResult === FlashResult.Success) {
+      // Taken care of by `updateStep` callback.
+      return;
+    }
+    const errorMessage = {
+      [FlashResult.MissingPermissions]:
+        "The app requires Bluetooth permissions.",
+      [FlashResult.BluetoothDisabled]:
+        "Please enable Bluetooth in the Settings app.",
+      [FlashResult.DeviceNotFound]:
+        "Failed to find a micro:bit that matches the pattern you entered. Please try again.",
+      [FlashResult.FailedToConnect]:
+        "Failed to connect to your micro:bit. Please try again and ensure your micro:bit is showing the pattern and your phone has Bluetooth enabled.",
+      [FlashResult.InvalidHex]: "The program (.hex) is invalid.",
+      [FlashResult.FullFlashFailed]:
+        "Please try again. If that fails, program the micro:bit from a computer with a USB cable then try again with the app.",
+      [FlashResult.Success]: "",
+    }[flashResult];
+
+    setStep({
+      name: "flash-error",
+      message: errorMessage,
+    });
+  }, [flasher, hex, updateStep]);
+
+  if (platform === "web") {
+    return (
+      <div style={{ textAlign: "left", padding: "2rem" }}>
+        <h1 style={{ fontSize: 20 }}>Cannot preview app on the web</h1>
+        <div>
+          <p>
+            You are currently viewing this app on the web. Please preview the
+            app on mobile instead.
+          </p>
+          <p>
+            We have only implemented bluetooth flashing of the micro:bit via a
+            mobile device.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
-      <dialog
-        open={open}
-        onCancel={handleClose}
-        style={{ maxWidth: "80%", textAlign: "left" }}
-      >
-        <h1 style={{ fontSize: 20 }}>Flash micro:bit?</h1>
-        {Capacitor.getPlatform() === "web" && (
-          <>
-            <p>You are currently viewing this app on the web.</p>
-            <p>
-              No need POC. We can flash your MakeCode project via the connection
-              library.
-            </p>
-          </>
-        )}
-        <p>{message}</p>
-        <div style={{ display: "flex", gap: "10px" }}>
-          {Capacitor.getPlatform() !== "web" && (
-            <button onClick={handleConnect}>Connect to micro:bit</button>
-          )}
-          <button onClick={handleClose}>Close</button>
+      <div style={{ height: "90%", width: "100%" }}>
+        <MakeCodeFrame
+          style={{ height: "100%", width: "100%" }}
+          controller={2}
+          loading="eager"
+          initialProjects={initialProject}
+          onDownload={handleDownload}
+        />
+      </div>
+      {open && (
+        <div
+          role="dialog"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            height: "90%",
+            width: "100%",
+            position: "absolute",
+            top: 0,
+            background: "white",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              height: "100%",
+              position: "relative",
+            }}
+          >
+            {step.name === "initial" && (
+              <Content
+                heading="Send to micro:bit"
+                onClose={handleClose}
+                cta={{
+                  text: "Send",
+                  onClick: () => setStep({ name: "pair-mode" }),
+                }}
+              >
+                <p>Do you want to send this program to your micro:bit?</p>
+              </Content>
+            )}
+            {step.name === "pair-mode" && (
+              <Content
+                heading="Ready to pair"
+                onClose={handleClose}
+                cta={{
+                  text: "My micro:bit shows a pattern",
+                  onClick: () => handleFlash(),
+                }}
+              >
+                <p>Press reset on the micro:bit three times.</p>
+                <p>
+                  If your micro:bit has not been updated in a while, hold button
+                  A and B and press reset.
+                </p>
+              </Content>
+            )}
+            {step.name === "flashing" && (
+              <Content
+                heading="Downloading"
+                cta={{
+                  text: "Finished",
+                  onClick: handleClose,
+                  disabled: step.message !== "Successfully downloaded",
+                }}
+              >
+                {step.progress && <p>Progress: {step.progress} %</p>}
+                <p>{step.message}</p>
+              </Content>
+            )}
+            {step.name === "flash-error" && (
+              <Content
+                heading="Sending your program failed"
+                onClose={handleClose}
+                cta={{
+                  text: "Try again",
+                  onClick: () => setStep({ name: "pair-mode" }),
+                }}
+              >
+                <p>{step.message}</p>
+              </Content>
+            )}
+          </div>
         </div>
-      </dialog>
-      <MakeCodeFrame
-        style={{ height: "100%" }}
-        controller={2}
-        loading="eager"
-        initialProjects={initialProject}
-        onDownload={handleDownload}
-      />
+      )}
     </>
   );
 }
+
+interface ContentProps {
+  heading: string;
+  children: ReactNode;
+  cta?: { text: string; onClick: () => void; disabled?: boolean };
+  onClose?: () => void;
+}
+
+const Content = ({ heading, children, cta, onClose }: ContentProps) => {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        height: "100%",
+        position: "relative",
+        padding: "2rem",
+      }}
+    >
+      <h1 style={{ fontSize: 20 }}>{heading}</h1>
+      <div>{children}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        {cta && (
+          <button
+            onClick={cta.onClick}
+            disabled={cta.disabled ?? false}
+            style={{
+              display: "flex",
+              gap: "10px",
+              width: "100%",
+              justifyContent: "center",
+              backgroundColor: "black",
+              color: "white",
+              opacity: cta.disabled ? 0.2 : 1,
+            }}
+          >
+            {cta.text}
+          </button>
+        )}
+        {onClose && (
+          <button
+            onClick={onClose}
+            style={{
+              display: "flex",
+              gap: "10px",
+              width: "100%",
+              justifyContent: "center",
+            }}
+          >
+            Close
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default App;

@@ -1,28 +1,55 @@
 PODS:
-  - Capacitor (6.2.0):
+  - Capacitor (7.4.4):
     - CapacitorCordova
-  - CapacitorCommunityBluetoothLe (6.1.0):
+  - CapacitorCommunityBluetoothLe (7.2.0):
     - Capacitor
-  - CapacitorCordova (6.2.0)
+  - CapacitorCommunityNordicDfu (7.0.0):
+    - Capacitor
+    - NordicDFU (~> 4.16.0)
+  - CapacitorCordova (7.4.4)
+  - CapacitorFilesystem (7.1.4):
+    - Capacitor
+    - IONFilesystemLib (~> 1.0.1)
+  - IONFilesystemLib (1.0.1)
+  - NordicDFU (4.16.0):
+    - ZIPFoundation (= 0.9.19)
+  - ZIPFoundation (0.9.19)
 
 DEPENDENCIES:
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorCommunityBluetoothLe (from `../../node_modules/@capacitor-community/bluetooth-le`)"
+  - CapacitorCommunityNordicDfu (from `../../node_modules/capacitor-community-nordic-dfu`)
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
+
+SPEC REPOS:
+  trunk:
+    - IONFilesystemLib
+    - NordicDFU
+    - ZIPFoundation
 
 EXTERNAL SOURCES:
   Capacitor:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorCommunityBluetoothLe:
     :path: "../../node_modules/@capacitor-community/bluetooth-le"
+  CapacitorCommunityNordicDfu:
+    :path: "../../node_modules/capacitor-community-nordic-dfu"
   CapacitorCordova:
     :path: "../../node_modules/@capacitor/ios"
+  CapacitorFilesystem:
+    :path: "../../node_modules/@capacitor/filesystem"
 
 SPEC CHECKSUMS:
-  Capacitor: 1f3c7b9802d958cd8c4eb63895fff85dff2e1eea
-  CapacitorCommunityBluetoothLe: d6fc1f6f8d6f0ef722c0817a7533ce35d42dc4f9
-  CapacitorCordova: b33e7f4aa4ed105dd43283acdd940964374a87d9
+  Capacitor: 09d9ff8e9618e8c4b3cab2bbee34a17215dd2fef
+  CapacitorCommunityBluetoothLe: ed9743fc77d7feca5c017e28bd9255a656615cc3
+  CapacitorCommunityNordicDfu: 8e9000bab44d4d538381d549e687a28b1a1c5f63
+  CapacitorCordova: bf648a636f3c153f652d312ae145fb508b6ffced
+  CapacitorFilesystem: ac0a386949ed6c295a3dffa129ecd26b881ae5be
+  IONFilesystemLib: 89258b8e3e85465da93127d25d7ce37f977e8a6f
+  NordicDFU: 116a4ec458945889f8e0e71759e03b23c39c3482
+  ZIPFoundation: b8c29ea7ae353b309bc810586181fd073cb3312c
 
-PODFILE CHECKSUM: 47998e176d73fb1dcd46c2cd81d1fab8a9f392d8
+PODFILE CHECKSUM: 3eef2ace1e09593f4ed6504fd6de785a3902559e
 
 COCOAPODS: 1.15.2

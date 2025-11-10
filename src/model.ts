@@ -1,9 +1,11 @@
 export enum FlashResult {
   MissingPermissions = "MissingPermissions",
   BluetoothDisabled = "BluetoothDisabled",
-  Success = "Success",
   DeviceNotFound = "DeviceNotFound",
-  FailedToConnect = "FailedToConnect"
+  FailedToConnect = "FailedToConnect",
+  InvalidHex = "InvalidHex",
+  FullFlashFailed = "FullFlashFailed",
+  Success = "Success"
 }
 
 export enum FlashProgressStage {
@@ -11,14 +13,30 @@ export enum FlashProgressStage {
   FindDevice = "FindDevice",
   Bond = "Bond",
   Connecting = "Connecting",
-  Partial = "Partial",
-  Full = "Full",
+  Partial = "PartialFlashing",
+  Full = "FullFlashing",
   Complete = "Complete",
+  Cancelled = "Cancelled",
+  Failed = "Failed"
 }
 
 export enum DeviceVersion {
   V1 = "V1",
-  V2 = "V2"
+  V2 = "V2",
 }
 
-export type Progress = (progressStage: FlashProgressStage, progress?: number) => void;
+export type Progress = (
+  progressStage: FlashProgressStage,
+  progress?: number
+) => void;
+
+export type Step = {
+  name: "initial" | "pair-mode" | "enter-pattern",
+} | {
+  name: "flashing",
+  message: string,
+  progress?: number
+} | {
+  name: "flash-error",
+  message: string
+}
