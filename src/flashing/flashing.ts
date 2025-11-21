@@ -26,9 +26,8 @@ class Flasher {
 
   /**
    * High-level flashing flow.
-   * TODO: Add device name as prop and use it for findMatchingDevice.
    */
-  async flash(hexStr: string, progress: Progress) {
+  async flash(deviceName: string, hexStr: string, progress: Progress) {
     const hex = hexStrToByte(hexStr);
 
     progress(FlashProgressStage.Initialize);
@@ -46,7 +45,9 @@ class Flasher {
     }
 
     progress(FlashProgressStage.FindDevice);
-    const device = await this.bluetooth.findMatchingDevice("BBC micro:bit");
+    const device = await this.bluetooth.findMatchingDevice(
+      `BBC micro:bit [${deviceName}]`
+    );
     if (!device) {
       return FlashResult.DeviceNotFound;
     }
@@ -134,6 +135,9 @@ class Flasher {
           return FlashResult.Cancelled;
         }
       }
+    } catch (e) {
+      console.error("Failed to Connect", e);
+      return FlashResult.FailedToConnect;
     } finally {
       await connection.disconnect();
     }

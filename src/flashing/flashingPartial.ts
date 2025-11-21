@@ -261,6 +261,7 @@ const attemptPartialFlash = async (
   }
   delay(100); // allow time for write to complete
   progress(FlashProgressStage.Partial, 100);
+  progress(FlashProgressStage.Complete)
 
   // Time execution
   //val endTime = SystemClock.elapsedRealtime()

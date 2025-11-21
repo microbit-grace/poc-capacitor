@@ -7,6 +7,7 @@ import { FlashProgressStage, FlashResult, Progress } from "./flashing/model";
 import Bluetooth from "./flashing/bluetooth";
 import FullFlasher from "./flashing/flashingFull";
 import Dfu from "./flashing/dfu";
+import BluetoothPatternInput from "./components/BluetoothPatternInput";
 
 const starterProject = {
   text: {
@@ -21,7 +22,7 @@ const starterProject = {
 
 type Step =
   | {
-      name: "initial" | "pair-mode" | "enter-pattern";
+      name: "initial" | "pair-mode" | "enter-pattern" | "success";
     }
   | {
       name: "flashing";
@@ -42,12 +43,14 @@ function App() {
   const [open, setOpen] = useState<boolean>(false);
   const [step, setStep] = useState<Step>({ name: "initial" });
   const [hex, setHex] = useState<null | { name: string; hex: string }>(null);
+  const [deviceName, setDeviceName] = useState<null | string>(null);
 
   const initialProject = useCallback(async () => [starterProject], []);
   const handleClose = useCallback(() => {
     setOpen(false);
     setStep({ name: "initial" });
   }, []);
+
   const updateStep: Progress = useCallback((progressStage, progress) => {
     const message = {
       [FlashProgressStage.Initialize]: "Checking permissions",
@@ -74,16 +77,20 @@ function App() {
 
   const handleFlash = useCallback(async () => {
     if (!hex) {
-      throw new Error("No hex file to flash");
+      throw new Error("No hex file to flash!");
     }
-    const flashResult = await flasher.flash(hex.hex, updateStep);
+    if (!deviceName) {
+      throw new Error("Device name not set!");
+    }
+    const flashResult = await flasher.flash(deviceName, hex.hex, updateStep);
     if (flashResult === FlashResult.Success) {
-      updateStep(FlashProgressStage.Complete);
+      // Success UI state is handled by updateStep when
+      // stage reaches FlashProgressStage.Complete
       return;
     }
     const errorMessage = {
       [FlashResult.MissingPermissions]:
-        "The app requires Bluetooth permissions.",
+        "The app requires Bluetooth permissions. If using an Android device, location should be enabled.",
       [FlashResult.BluetoothDisabled]:
         "Please enable Bluetooth in the Settings app.",
       [FlashResult.DeviceNotFound]:
@@ -102,7 +109,7 @@ function App() {
       name: "flash-error",
       message: errorMessage,
     });
-  }, [flasher, hex, updateStep]);
+  }, [deviceName, flasher, hex, updateStep]);
 
   if (platform === "web") {
     return (
@@ -173,7 +180,7 @@ function App() {
                 onClose={handleClose}
                 cta={{
                   text: "My micro:bit shows a pattern",
-                  onClick: () => handleFlash(),
+                  onClick: () => setStep({ name: "enter-pattern" }),
                 }}
               >
                 <p>Press reset on the micro:bit three times.</p>
@@ -181,6 +188,18 @@ function App() {
                   If your micro:bit has not been updated in a while, hold button
                   A and B and press reset.
                 </p>
+              </Content>
+            )}
+            {step.name === "enter-pattern" && (
+              <Content
+                heading="Draw your pattern"
+                cta={{
+                  text: "Next",
+                  onClick: () => handleFlash(),
+                  disabled: deviceName?.length !== 5,
+                }}
+              >
+                <BluetoothPatternInput onDeviceNameChange={setDeviceName} />
               </Content>
             )}
             {step.name === "flashing" && (
