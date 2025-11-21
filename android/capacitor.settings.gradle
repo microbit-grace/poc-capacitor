@@ -9,4 +9,4 @@ include ':capacitor-filesystem'
 project(':capacitor-filesystem').projectDir = new File('../node_modules/@capacitor/filesystem/android')
 
 include ':capacitor-community-nordic-dfu'
-project(':capacitor-community-nordic-dfu').projectDir = new File('../../nordic-dfu/android')
+project(':capacitor-community-nordic-dfu').projectDir = new File('../node_modules/capacitor-community-nordic-dfu/android')
