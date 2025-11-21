@@ -6,7 +6,7 @@ import {
 } from "./flashingConstants";
 import { refreshServicesForV1IfDesiredServiceMissing } from "./flashingV1";
 import FullFlasher from "./flashingFull";
-import { createHexFileFromUniversal, hexStrToByte } from "./hexUtils";
+import { createHexFileFromUniversal, hexStrToByte } from "./irmHexUtils";
 import {
   DeviceVersion,
   FlashProgressStage,
@@ -14,6 +14,7 @@ import {
   Progress,
 } from "./model";
 import { delay } from "./utils";
+import partialFlash, { PartialFlashResult } from "./flashingPartial";
 
 class Flasher {
   private bluetooth;
@@ -68,37 +69,74 @@ class Flasher {
       return FlashResult.FailedToConnect;
     }
 
-    // Taken from Nordic. See reasoning here: https://github.com/NordicSemiconductor/Android-DFU-Library/blob/e0ab213a369982ae9cf452b55783ba0bdc5a7916/dfu/src/main/java/no/nordicsemi/android/dfu/DfuBaseService.java#L888 */
-    console.log(
-      "Waiting for service changed notification before discovering services"
-    );
-    // We could short-circuit this by racing it with the GATT callback on
-    // Android 12+ and the equivalent on iOS
-    await delay(1600);
+    try {
+      // Taken from Nordic. See reasoning here: https://github.com/NordicSemiconductor/Android-DFU-Library/blob/e0ab213a369982ae9cf452b55783ba0bdc5a7916/dfu/src/main/java/no/nordicsemi/android/dfu/DfuBaseService.java#L888 */
+      console.log(
+        "Waiting for service changed notification before discovering services"
+      );
+      // We could short-circuit this by racing it with the GATT callback on
+      // Android 12+ and the equivalent on iOS
+      await delay(1600);
 
-    await refreshServicesForV1IfDesiredServiceMissing(
-      connection,
-      MICROBIT_DFU_SERVICE
-    );
+      await refreshServicesForV1IfDesiredServiceMissing(
+        connection,
+        MICROBIT_DFU_SERVICE
+      );
 
-    // The iOS app does this differently, via the device information service
-    // Perhaps that would let us make a more positive V1 ID.
-    const deviceVersion = await this.getDeviceVersion(device);
-    console.log(`Detected device version as ${deviceVersion}`);
+      // The iOS app does this differently, via the device information service
+      // Perhaps that would let us make a more positive V1 ID.
+      const deviceVersion = await this.getDeviceVersion(device);
+      console.log(`Detected device version as ${deviceVersion}`);
 
-    const appHex = createHexFileFromUniversal(inputHex, deviceVersion);
-    if (!appHex?.data) {
-      return FlashResult.InvalidHex;
+      const appHex = createHexFileFromUniversal(inputHex, deviceVersion);
+      if (!appHex?.data) {
+        return FlashResult.InvalidHex;
+      }
+
+      const partialFlashResult = await partialFlash(
+        connection,
+        appHex.data,
+        deviceVersion,
+        progress
+      );
+
+      switch (partialFlashResult) {
+        case PartialFlashResult.Success: {
+          return FlashResult.Success;
+        }
+        case PartialFlashResult.Failed: {
+          return FlashResult.PartialFlashFailed;
+        }
+        case PartialFlashResult.FailedToConnect: {
+          return FlashResult.FailedToConnect;
+        }
+        case PartialFlashResult.InvalidHex: {
+          return FlashResult.InvalidHex;
+        }
+        case PartialFlashResult.AttemptFullFlash: {
+          const isBonded = await this.bluetooth.checkBondState(device);
+          // TODO: This doesn't seem to work on V1, perhaps customise UI flow?
+          if (deviceVersion === DeviceVersion.V1) {
+            return FlashResult.PartialFlashFailed;
+          }
+          if (!isBonded) {
+            // User opted not to pair when asked
+            return FlashResult.Cancelled;
+          }
+          return this.fullFlasher.fullFlash(
+            connection,
+            deviceVersion,
+            appHex.data,
+            progress
+          );
+        }
+        default: {
+          return FlashResult.Cancelled;
+        }
+      }
+    } finally {
+      await connection.disconnect();
     }
-
-    // const partialFlashResult = partialFlash(connection, appHex.data, deviceVersion)
-
-    return this.fullFlasher.fullFlash(
-      connection,
-      deviceVersion,
-      appHex.data,
-      progress
-    );
   }
 
   private async getDeviceVersion(device: BleDevice) {

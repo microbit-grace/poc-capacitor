@@ -1,7 +1,7 @@
 import { BleDevice } from "@capacitor-community/bluetooth-le";
 import { DfuState, NordicDfu } from "capacitor-community-nordic-dfu";
 import { DeviceVersion, FlashProgressStage, FlashResult, Progress } from "./model";
-import { HexArrayBuffer, SizedHexData } from "./hexUtils";
+import { SizedHexData } from "./irmHexUtils";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import JSZip from "jszip";
 
@@ -12,7 +12,7 @@ class Dfu {
     device: BleDevice,
     deviceVersion: DeviceVersion,
     appBin: SizedHexData,
-    initPacket: HexArrayBuffer,
+    initPacket: Uint8Array,
     progress: Progress
   ): Promise<FlashResult> {
     NordicDfu.addListener("DFUStateChanged", ({ state, data }) => {
@@ -68,7 +68,7 @@ class Dfu {
 
   private createDfuZipFile = async (
     appBin: SizedHexData,
-    initPacket: HexArrayBuffer
+    initPacket: Uint8Array
   ): Promise<string> => {
     const zip = new JSZip();
     zip.file("application.dat", initPacket);

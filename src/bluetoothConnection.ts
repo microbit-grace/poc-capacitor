@@ -5,7 +5,7 @@ export enum WriteType {
   Default = "Default",
 }
 
-type Characteristic = { serviceId: string; characteristicId: string };
+export type Characteristic = { serviceId: string; characteristicId: string };
 
 type BluetoothResult = {
   status: boolean;
@@ -32,6 +32,11 @@ export interface BleConnection {
     serviceId: string,
     characteristicId: string
   ): Promise<Characteristic | null>;
+
+  setCharacteristicNotification(
+    characteristic: Characteristic,
+    enabled: boolean
+  ): Promise<boolean>;
 
   disconnect(): Promise<void>;
 
@@ -60,6 +65,7 @@ class BluetoothConnection implements BleConnection {
     serviceId: string,
     characteristicId: string
   ): Promise<Characteristic | null> {
+    await this.refreshAndDiscoverServices();
     const services = await BleClient.getServices(this.device.deviceId);
     const foundService = services.find((s) => s.uuid === serviceId);
     if (!foundService) {
@@ -72,6 +78,41 @@ class BluetoothConnection implements BleConnection {
       return null;
     }
     return { serviceId, characteristicId };
+  }
+  async setCharacteristicNotification(
+    characteristic: Characteristic,
+    enabled: boolean
+  ): Promise<boolean> {
+    // If the specified characteristic's configuration allows both notifications
+    // and indications, calling this method enables notifications only.
+    const result = await new Promise<boolean>((resolve) => {
+      const operation = enabled
+        ? BleClient.startNotifications(
+            this.device.deviceId,
+            characteristic.serviceId,
+            characteristic.characteristicId,
+            (value: DataView) => {
+              console.log("Notification", value);
+              // This callback is for actual notification values, not state changes
+              // You might want to store this callback elsewhere if needed
+            }
+          )
+        : BleClient.stopNotifications(
+            this.device.deviceId,
+            characteristic.serviceId,
+            characteristic.characteristicId
+          );
+
+      operation
+        .then(() => {
+          resolve(true);
+        })
+        .catch((error) => {
+          console.error(`setNotification failed: ${error}`);
+          resolve(false);
+        });
+    });
+    return result;
   }
   async disconnect(): Promise<void> {
     return BleClient.disconnect(this.device.deviceId);
@@ -89,14 +130,13 @@ class BluetoothConnection implements BleConnection {
   ): Promise<BluetoothResult> {
     let cleanup: (() => void) | null = null;
 
-    const result = await new Promise<BluetoothResult>((resolve) => {
-      // Assumption: all the BT callbacks happen on the same thread
-      // Write callback isn't called when writing without response
+    // eslint-disable-next-line no-async-promise-executor
+    const result = await new Promise<BluetoothResult>(async (resolve) => {
       let writeStatus: boolean | null =
         writeType === WriteType.NoResponse ? true : null;
       let notificationValue: Uint8Array | null = null;
 
-      const resumeIfPossible = async () => {
+      const resumeIfPossible = () => {
         const writeStatusLocal = writeStatus;
         const notificationValueLocal = notificationValue;
         console.log(
@@ -123,52 +163,67 @@ class BluetoothConnection implements BleConnection {
 
       // Set up notification listener if needed
       if (notificationId !== null) {
-        BleClient.startNotifications(
-          this.device.deviceId,
-          characteristic.serviceId,
-          characteristic.characteristicId,
-          (value: DataView) => {
-            console.log("characteristicChanged received");
-            // Convert DataView to Uint8Array
-            notificationValue = new Uint8Array(value.buffer);
-            resumeIfPossible();
-          }
-        );
+        try {
+          await BleClient.startNotifications(
+            this.device.deviceId,
+            characteristic.serviceId,
+            characteristic.characteristicId,
+            (value: DataView) => {
+              console.log("characteristicChanged received");
+              const bytes = new Uint8Array(value.buffer);
+              if (notificationId === null || bytes[0] === notificationId) {
+                notificationValue = bytes;
+                resumeIfPossible();
+              }
+            }
+          );
+        } catch (error) {
+          console.error("Failed to start notifications:", error);
+          resolve({ status: false, value: null });
+          return;
+        }
       }
 
       cleanup = async () => {
-        await BleClient.stopNotifications(
-          this.device.deviceId,
-          characteristic.serviceId,
-          characteristic.characteristicId
-        );
+        if (notificationId !== null) {
+          try {
+            await BleClient.stopNotifications(
+              this.device.deviceId,
+              characteristic.serviceId,
+              characteristic.characteristicId
+            );
+          } catch (error) {
+            console.error("Failed to stop notifications:", error);
+          }
+        }
       };
 
       // Perform the write operation
-      const write =
-        writeType === WriteType.Default
-          ? BleClient.write
-          : BleClient.writeWithoutResponse;
-
-      write(
-        this.device.deviceId,
-        characteristic.serviceId,
-        characteristic.characteristicId,
-        value
-      )
-        .then(() => {
-          console.log("write completed successfully");
-          writeStatus = true;
-          resumeIfPossible();
-        })
-        .catch((error) => {
-          console.log(`write failed: ${error}`);
-          writeStatus = false;
-          resumeIfPossible();
-        });
-
-      resumeIfPossible();
-    }).finally(() => {
+      try {
+        if (writeType === WriteType.Default) {
+          await BleClient.write(
+            this.device.deviceId,
+            characteristic.serviceId,
+            characteristic.characteristicId,
+            value
+          );
+        } else {
+          await BleClient.writeWithoutResponse(
+            this.device.deviceId,
+            characteristic.serviceId,
+            characteristic.characteristicId,
+            value
+          );
+        }
+        console.log("write completed successfully");
+        writeStatus = true;
+        resumeIfPossible();
+      } catch (error) {
+        console.log(`write failed: ${error}`);
+        writeStatus = false;
+        resumeIfPossible();
+      }
+    }).finally(async () => {
       if (cleanup) {
         cleanup();
       }

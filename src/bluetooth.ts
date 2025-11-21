@@ -1,4 +1,8 @@
-import { BleClient, BleClientInterface, BleDevice } from "@capacitor-community/bluetooth-le";
+import {
+  BleClient,
+  BleClientInterface,
+  BleDevice,
+} from "@capacitor-community/bluetooth-le";
 import { Capacitor } from "@capacitor/core";
 import BluetoothConnection from "./bluetoothConnection";
 
@@ -13,7 +17,7 @@ export interface BluetoothDevice {
    * BLE client.
    */
   client: BleClientInterface;
-  
+
   /**
    * Initializes BLE.
    */
@@ -34,16 +38,21 @@ export interface BluetoothDevice {
   bond(device: BleDevice): Promise<boolean>;
 
   /**
+   * Check bond state with device.
+   *
+   * @returns true if bonded or false if not bonded.
+   */
+  checkBondState(device: BleDevice): Promise<boolean>;
+
+  /**
    * Connects with device.
-   * 
+   *
    * @returns BluetoothConnection if successful, otherwise null.
    */
   connect(device: BleDevice): Promise<BluetoothConnection | null>;
 
-  disconnect(deviceId: string): Promise<void>
+  disconnect(deviceId: string): Promise<void>;
 }
-
-
 
 const bondingTimeoutInMs = 10_000;
 const connectTimeoutInMs = 10_000;
@@ -114,6 +123,10 @@ class Bluetooth implements BluetoothDevice {
       console.error(error);
       return false;
     }
+  }
+
+  async checkBondState(device: BleDevice): Promise<boolean> {
+    return BleClient.isBonded(device.deviceId)
   }
 
   async connect(device: BleDevice): Promise<BluetoothConnection | null> {

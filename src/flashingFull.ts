@@ -1,5 +1,5 @@
 import BluetoothConnection, { WriteType } from "./bluetoothConnection";
-import { createAppBin, HexArrayBuffer } from "./hexUtils";
+import { createAppBin } from "./irmHexUtils";
 import {
   DeviceVersion,
   FlashProgressStage,
@@ -28,7 +28,7 @@ class FullFlasher {
   fullFlash = async (
     connection: BluetoothConnection,
     deviceVersion: DeviceVersion,
-    appHexData: HexArrayBuffer,
+    appHexData: Uint8Array,
     progress: Progress
   ): Promise<FlashResult> => {
     console.log("Full flash");

@@ -65,7 +65,7 @@ function App() {
     }
     const flashResult = await flasher.flash(hex.hex, updateStep);
     if (flashResult === FlashResult.Success) {
-      // Taken care of by `updateStep` callback.
+      updateStep(FlashProgressStage.Complete);
       return;
     }
     const errorMessage = {
@@ -78,9 +78,11 @@ function App() {
       [FlashResult.FailedToConnect]:
         "Failed to connect to your micro:bit. Please try again and ensure your micro:bit is showing the pattern and your phone has Bluetooth enabled.",
       [FlashResult.InvalidHex]: "The program (.hex) is invalid.",
+      [FlashResult.PartialFlashFailed]:
+        "Partial flashing failed. Please try again. If that fails, program the micro:bit from a computer with a USB cable then try again with the app.",
       [FlashResult.FullFlashFailed]:
-        "Please try again. If that fails, program the micro:bit from a computer with a USB cable then try again with the app.",
-      [FlashResult.Success]: "",
+        "Full flashing failed. Please try again. If that fails, program the micro:bit from a computer with a USB cable then try again with the app.",
+      [FlashResult.Cancelled]: "Cancelled",
     }[flashResult];
 
     setStep({

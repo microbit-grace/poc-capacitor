@@ -5,6 +5,8 @@ export enum FlashResult {
   FailedToConnect = "FailedToConnect",
   InvalidHex = "InvalidHex",
   FullFlashFailed = "FullFlashFailed",
+  PartialFlashFailed = "PartialFlashFailed",
+  Cancelled = "Cancelled",
   Success = "Success"
 }
 
