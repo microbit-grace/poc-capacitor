@@ -8,7 +8,7 @@ import {
 } from "./model";
 import Dfu from "./dfu";
 import { refreshServicesForV1IfDesiredServiceMissing } from "./flashingV1";
-import { delay } from "./utils";
+import { delay } from "../utils";
 import { MICROBIT_DFU_CHARACTERISTIC, MICROBIT_DFU_SERVICE, NORDIC_DFU_SERVICE } from "./flashingConstants";
 import { numbersToDataView } from "@capacitor-community/bluetooth-le";
 

@@ -2,28 +2,41 @@ import { Capacitor } from "@capacitor/core";
 import { MakeCodeFrame, MakeCodeProject } from "@microbit/makecode-embed";
 import { ReactNode, useCallback, useMemo, useState } from "react";
 import "./App.css";
-import Flasher from "./flashing";
-import { FlashProgressStage, FlashResult, Progress, Step } from "./model";
-import Bluetooth from "./bluetooth";
-import FullFlasher from "./flashingFull";
-import Dfu from "./dfu";
+import Flasher from "./flashing/flashing";
+import { FlashProgressStage, FlashResult, Progress } from "./flashing/model";
+import Bluetooth from "./flashing/bluetooth";
+import FullFlasher from "./flashing/flashingFull";
+import Dfu from "./flashing/dfu";
 
 const starterProject = {
   text: {
     "main.blocks":
-      '<xml xmlns="http://www.w3.org/1999/xhtml">\n  <variables></variables>\n</xml>',
-    "main.ts": "\n",
+      '<xml xmlns="https://developers.google.com/blockly/xml"><variables></variables><block type="pxt-on-start" x="20" y="20"><statement name="HANDLER"><block type="basic_show_icon"><field name="i">IconNames.Heart</field></block></statement></block></xml>',
+    "main.ts": "basic.showIcon(IconNames.Heart)\n",
     "README.md": " ",
     "pxt.json":
       '{\n    "name": "Untitled",\n    "dependencies": {\n        "core": "*"\n , "radio": "*"\n     },\n    "description": "",\n    "files": [\n        "main.blocks",\n        "main.ts",\n        "README.md"\n    ],\n    "preferredEditor": "blocksprj"\n}',
   },
 } as MakeCodeProject;
 
+type Step =
+  | {
+      name: "initial" | "pair-mode" | "enter-pattern";
+    }
+  | {
+      name: "flashing";
+      message: string;
+      progress?: number;
+    }
+  | {
+      name: "flash-error";
+      message: string;
+    };
+
 function App() {
-  const ble = useMemo(() => new Bluetooth(), []);
   const flasher = useMemo(
-    () => new Flasher(ble, new FullFlasher(new Dfu())),
-    [ble]
+    () => new Flasher(new Bluetooth(), new FullFlasher(new Dfu())),
+    []
   );
   const platform = Capacitor.getPlatform();
   const [open, setOpen] = useState<boolean>(false);

@@ -31,14 +31,3 @@ export type Progress = (
   progressStage: FlashProgressStage,
   progress?: number
 ) => void;
-
-export type Step = {
-  name: "initial" | "pair-mode" | "enter-pattern",
-} | {
-  name: "flashing",
-  message: string,
-  progress?: number
-} | {
-  name: "flash-error",
-  message: string
-}

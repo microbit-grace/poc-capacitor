@@ -9,7 +9,7 @@ import {
 } from "./flashingConstants";
 import HexUtils, { forByteArray, recordToByteArray } from "./hexUtils";
 import { DeviceVersion, FlashProgressStage, Progress } from "./model";
-import { delay } from "./utils";
+import { delay } from "../utils";
 
 export enum PartialFlashResult {
   Success = "Success",

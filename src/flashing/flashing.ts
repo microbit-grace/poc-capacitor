@@ -13,7 +13,7 @@ import {
   FlashResult,
   Progress,
 } from "./model";
-import { delay } from "./utils";
+import { delay } from "../utils";
 import partialFlash, { PartialFlashResult } from "./flashingPartial";
 
 class Flasher {
