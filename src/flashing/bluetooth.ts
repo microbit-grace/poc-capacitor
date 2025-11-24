@@ -64,7 +64,7 @@ class Bluetooth implements BluetoothDevice {
 
   async initialize(): Promise<BluetoothInitializationResult> {
     // Check if location is enabled.
-    if (Capacitor.getPlatform() === "android") {
+    if (isAndroid()) {
       const isLocationEnabled = await BleClient.isLocationEnabled();
       if (!isLocationEnabled) {
         return BluetoothInitializationResult.MissingPermissions;
@@ -80,6 +80,10 @@ class Bluetooth implements BluetoothDevice {
   }
 
   private async checkBondedDevices(predicate: (device: BleDevice) => boolean) {
+    if (!isAndroid()) {
+      // Not supported.
+      return undefined;
+    }
     const bondedDevices = await BleClient.getBondedDevices();
     const result = bondedDevices.find(predicate);
     console.log(
@@ -99,18 +103,23 @@ class Bluetooth implements BluetoothDevice {
       return bonded;
     }
 
-    // Scan for matching device.
     // TODO: Scan needs timing out.
-    const scanPromise: Promise<BleDevice> = new Promise((res) =>
-      BleClient.requestLEScan({ namePrefix }, async (result) => {
-        await BleClient.stopLEScan();
-        res(result.device);
-      })
+    const scanPromise: Promise<BleDevice> = new Promise(
+      (res) =>
+        // This only resolves when we stop the scan.
+        void BleClient.requestLEScan({ namePrefix }, async (result) => {
+          await BleClient.stopLEScan();
+          res(result.device);
+        })
     );
-    return await Promise.race([scanPromise]);
+    return await scanPromise;
   }
 
   async bond(device: BleDevice): Promise<boolean> {
+    if (!isAndroid()) {
+      // Handled by the OS.
+      return true;
+    }
     try {
       const deviceId = device.deviceId;
       const isAlreadyBonded = await BleClient.isBonded(deviceId);
@@ -126,7 +135,7 @@ class Bluetooth implements BluetoothDevice {
   }
 
   async checkBondState(device: BleDevice): Promise<boolean> {
-    return BleClient.isBonded(device.deviceId)
+    return BleClient.isBonded(device.deviceId);
   }
 
   async connect(device: BleDevice): Promise<BluetoothConnection | null> {
@@ -155,5 +164,7 @@ const getDevicePredicate = (namePrefix: string) => {
     return !!name && name.startsWith(namePrefix);
   };
 };
+
+const isAndroid = () => Capacitor.getPlatform() === "android";
 
 export default Bluetooth;
