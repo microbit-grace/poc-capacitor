@@ -135,6 +135,10 @@ class Bluetooth implements BluetoothDevice {
   }
 
   async checkBondState(device: BleDevice): Promise<boolean> {
+    if (!isAndroid()) {
+      // Handled by the OS.
+      return true;
+    }
     return BleClient.isBonded(device.deviceId);
   }
 

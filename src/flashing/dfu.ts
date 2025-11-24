@@ -38,13 +38,11 @@ class Dfu {
         }
       }
     });
+    const filePath = await this.getFilePath(deviceVersion, appBin, initPacket)
     const error = await NordicDfu.startDFU({
       deviceName: device.name,
       deviceAddress: device.deviceId,
-      filePath:
-        deviceVersion === DeviceVersion.V1
-          ? await this.createAppBinFile(appBin)
-          : await this.createDfuZipFile(appBin, initPacket),
+      filePath: filePath,
       dfuOptions: {
         ...{
           [DeviceVersion.V1]: { forceDfu: true },
@@ -64,6 +62,13 @@ class Dfu {
       return FlashResult.FullFlashFailed
     }
     return FlashResult.Success;
+  }
+
+  private getFilePath = async (deviceVersion: DeviceVersion, appBin: SizedHexData, initPacket: Uint8Array) => {
+    if (deviceVersion === DeviceVersion.V1) {
+      return await this.createAppBinFile(appBin) 
+    }
+    return await this.createDfuZipFile(appBin, initPacket)
   }
 
   private createDfuZipFile = async (
