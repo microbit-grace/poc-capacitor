@@ -1,5 +1,5 @@
-import BluetoothConnection from "./bluetoothConnection";
-import { MICROBIT_DFU_SERVICE, NORDIC_DFU_SERVICE } from "./flashingConstants";
+import { BleClient } from "@capacitor-community/bluetooth-le";
+import { MICROBIT_DFU_SERVICE, NORDIC_DFU_SERVICE } from "./constants";
 
 /**
  * V1 changes the service it offers in application/bootloader mode.
@@ -12,18 +12,20 @@ import { MICROBIT_DFU_SERVICE, NORDIC_DFU_SERVICE } from "./flashingConstants";
  * can't get service changed indications.
  */
 export const refreshServicesForV1IfDesiredServiceMissing = async (
-  connection: BluetoothConnection,
+  deviceId: string,
   desiredServiceUuid: string
 ) => {
-  const isV1 =
-    (await connection.hasService(MICROBIT_DFU_SERVICE)) ||
-    (await connection.hasService(NORDIC_DFU_SERVICE));
+  const services = await BleClient.getServices(deviceId);
+  const isV1 = services.some(
+    (s) => s.uuid === MICROBIT_DFU_SERVICE || s.uuid === NORDIC_DFU_SERVICE
+  );
   console.log("isV1", isV1);
   if (isV1) {
-    const hasService = await connection.hasService(desiredServiceUuid);
-    if (!hasService) {
-      console.log("Missing service, clearing cache and refreshing services");
-      await connection.refreshAndDiscoverServices();
+    const deviceHasService = services.some(
+      (s) => s.uuid === desiredServiceUuid
+    );
+    if (!deviceHasService) {
+      await BleClient.discoverServices(deviceId);
     }
   }
 };

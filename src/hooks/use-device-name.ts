@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { deviceStorage } from '../storage/deviceStorage';
+import { useEffect, useState } from "react";
+import { deviceStorage } from "../storage/device-storage";
 
 /**
  * Hook to load and manage the saved device name
@@ -20,7 +20,7 @@ export function useDeviceName() {
           setIsLoading(false);
         }
       } catch (error) {
-        console.error('Failed to load device name:', error);
+        console.error("Failed to load device name:", error);
         if (mounted) {
           setIsLoading(false);
         }

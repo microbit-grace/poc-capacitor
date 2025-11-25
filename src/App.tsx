@@ -1,14 +1,11 @@
 import { Capacitor } from "@capacitor/core";
 import { MakeCodeFrame, MakeCodeProject } from "@microbit/makecode-embed";
-import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 import "./App.css";
-import Flasher from "./flashing/flashing";
-import { FlashProgressStage, FlashResult, Progress } from "./flashing/model";
-import Bluetooth from "./flashing/bluetooth";
-import FullFlasher from "./flashing/flashingFull";
-import Dfu from "./flashing/dfu";
 import BluetoothPatternInput from "./components/BluetoothPatternInput";
-import { useDeviceName } from "./hooks/useDeviceName";
+import { flash } from "./flashing";
+import { FlashProgressStage, FlashResult, Progress } from "./flashing/model";
+import { useDeviceName } from "./hooks/use-device-name";
 
 const starterProject = {
   text: {
@@ -36,10 +33,6 @@ type Step =
     };
 
 function App() {
-  const flasher = useMemo(
-    () => new Flasher(new Bluetooth(), new FullFlasher(new Dfu())),
-    []
-  );
   const platform = Capacitor.getPlatform();
   const { deviceName: savedDeviceName, saveDeviceName } = useDeviceName();
   const [open, setOpen] = useState<boolean>(false);
@@ -91,7 +84,7 @@ function App() {
     if (!deviceName) {
       throw new Error("Device name not set!");
     }
-    const flashResult = await flasher.flash(deviceName, hex.hex, updateStep);
+    const flashResult = await flash(deviceName, hex.hex, updateStep);
     if (flashResult === FlashResult.Success) {
       // Save the device name for next time
       await saveDeviceName(deviceName);
@@ -120,7 +113,7 @@ function App() {
       name: "flash-error",
       message: errorMessage,
     });
-  }, [deviceName, flasher, hex, saveDeviceName, updateStep]);
+  }, [deviceName, hex, saveDeviceName, updateStep]);
 
   if (platform === "web") {
     return (
@@ -266,6 +259,7 @@ const Content = ({ heading, children, cta, onClose }: ContentProps) => {
         height: "100%",
         position: "relative",
         padding: "2rem",
+        color: "black",
       }}
     >
       <h1 style={{ fontSize: 20 }}>{heading}</h1>

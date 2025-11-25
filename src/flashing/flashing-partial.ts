@@ -1,13 +1,13 @@
-import { numbersToDataView } from "@capacitor-community/bluetooth-le";
-import BluetoothConnection, {
-  Characteristic,
-  WriteType,
-} from "./bluetoothConnection";
+import {
+  BleDevice,
+  numbersToDataView,
+} from "@capacitor-community/bluetooth-le";
+import { characteristicWriteNotificationWait, WriteType } from "./bluetooth";
 import {
   PARTIAL_FLASH_CHARACTERISTIC,
   PARTIAL_FLASHING_SERVICE,
-} from "./flashingConstants";
-import HexUtils, { forByteArray, recordToByteArray } from "./hexUtils";
+} from "./constants";
+import HexUtils, { forByteArray, recordToByteArray } from "./hex-utils";
 import { DeviceVersion, FlashProgressStage, Progress } from "./model";
 import { delay } from "../utils";
 
@@ -19,35 +19,6 @@ export enum PartialFlashResult {
   FailedToConnect = "FailedToConnect",
 }
 
-const partialFlash = async (
-  connection: BluetoothConnection,
-  appHexData: Uint8Array,
-  deviceVersion: DeviceVersion,
-  progress: Progress
-): Promise<PartialFlashResult> => {
-  const pfCharacteristic = await connection.getCharacteristic(
-    PARTIAL_FLASHING_SERVICE,
-    PARTIAL_FLASH_CHARACTERISTIC
-  );
-  if (pfCharacteristic === null) {
-    console.log("No partial flashing characteristic found");
-    return PartialFlashResult.AttemptFullFlash;
-  }
-  const isSetNotificationSuccess =
-    await connection.setCharacteristicNotification(pfCharacteristic, true);
-  if (!isSetNotificationSuccess) {
-    return PartialFlashResult.AttemptFullFlash;
-  }
-  console.log("Enabled notification for partial flashing");
-  return attemptPartialFlash(
-    connection,
-    appHexData,
-    deviceVersion,
-    pfCharacteristic,
-    progress
-  );
-};
-
 const REGION_INFO_COMMAND = 0x0;
 const REGION_MAKECODE = 2;
 const REGION_DAL = 1;
@@ -55,14 +26,13 @@ const FLASH_COMMAND = 0x1;
 const PACKET_STATE_WAITING = 0;
 const PACKET_STATE_RETRANSMIT = 0xaa;
 
-// Write to BLE Flash Characteristic
-const attemptPartialFlash = async (
-  connection: BluetoothConnection,
+const partialFlash = async (
+  device: BleDevice,
   appHexData: Uint8Array,
   deviceVersion: DeviceVersion,
-  pfCharacteristic: Characteristic,
   progress: Progress
 ): Promise<PartialFlashResult> => {
+  const { deviceId } = device;
   const hex = forByteArray(appHexData);
   let python = false; // Not seem to be used.
   let codeData = findMakeCodeData(hex);
@@ -83,8 +53,10 @@ const attemptPartialFlash = async (
       dataPos.line
     } at offset ${dataPos.part}`
   );
-  const deviceCodeResult = await connection.characteristicWriteNotificationWait(
-    pfCharacteristic,
+  const deviceCodeResult = await characteristicWriteNotificationWait(
+    deviceId,
+    PARTIAL_FLASHING_SERVICE,
+    PARTIAL_FLASH_CHARACTERISTIC,
     numbersToDataView([REGION_INFO_COMMAND, REGION_MAKECODE]),
     // The Android app writes this with response but iOS objects as we don't
     // advertise support for that
@@ -99,8 +71,10 @@ const attemptPartialFlash = async (
     return PartialFlashResult.AttemptFullFlash;
   }
 
-  const deviceHashResult = await connection.characteristicWriteNotificationWait(
-    pfCharacteristic,
+  const deviceHashResult = await characteristicWriteNotificationWait(
+    deviceId,
+    PARTIAL_FLASHING_SERVICE,
+    PARTIAL_FLASH_CHARACTERISTIC,
     numbersToDataView([REGION_INFO_COMMAND, REGION_DAL]),
     // The Android app writes this with response but iOS objects as we don't
     // advertise support for that
@@ -202,8 +176,10 @@ const attemptPartialFlash = async (
     writeCounter++;
     let packetState = -1;
     if (writeCounter === 4) {
-      const result = await connection.characteristicWriteNotificationWait(
-        pfCharacteristic,
+      const result = await characteristicWriteNotificationWait(
+        deviceId,
+        PARTIAL_FLASHING_SERVICE,
+        PARTIAL_FLASH_CHARACTERISTIC,
         chunk,
         WriteType.NoResponse,
         FLASH_COMMAND,
@@ -216,8 +192,10 @@ const attemptPartialFlash = async (
       packetState = result.value[1];
       writeCounter = 0;
     } else {
-      const result = await connection.characteristicWriteNotificationWait(
-        pfCharacteristic,
+      const result = await characteristicWriteNotificationWait(
+        deviceId,
+        PARTIAL_FLASHING_SERVICE,
+        PARTIAL_FLASH_CHARACTERISTIC,
         chunk,
         WriteType.NoResponse
       );
@@ -251,8 +229,10 @@ const attemptPartialFlash = async (
   delay(100); // allow time for write to complete
 
   const endOfFlashPacket = numbersToDataView([0x02]);
-  const { status } = await connection.characteristicWriteNotificationWait(
-    pfCharacteristic,
+  const { status } = await characteristicWriteNotificationWait(
+    deviceId,
+    PARTIAL_FLASHING_SERVICE,
+    PARTIAL_FLASH_CHARACTERISTIC,
     endOfFlashPacket,
     WriteType.NoResponse
   );
@@ -261,7 +241,7 @@ const attemptPartialFlash = async (
   }
   delay(100); // allow time for write to complete
   progress(FlashProgressStage.Partial, 100);
-  progress(FlashProgressStage.Complete)
+  progress(FlashProgressStage.Complete);
 
   // Time execution
   //val endTime = SystemClock.elapsedRealtime()
