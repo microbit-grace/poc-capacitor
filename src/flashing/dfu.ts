@@ -1,10 +1,26 @@
 import { BleDevice } from "@capacitor-community/bluetooth-le";
 import { DfuState, NordicDfu } from "capacitor-community-nordic-dfu";
-import { DeviceVersion, FlashProgressStage, FlashResult, Progress } from "./model";
+import {
+  DeviceVersion,
+  FlashProgressStage,
+  FlashResult,
+  Progress,
+} from "./model";
 import { SizedHexData } from "./irmHexUtils";
-import { Directory, Filesystem } from "@capacitor/filesystem";
+import { Directory, Filesystem, WriteFileOptions } from "@capacitor/filesystem";
 import JSZip from "jszip";
+import { Capacitor } from "@capacitor/core";
 
+const appBinFilename = "application.bin";
+const appDatFilename = "application.dat";
+const manifestData = JSON.stringify({
+  manifest: {
+    application: {
+      bin_file: appBinFilename,
+      dat_file: appDatFilename,
+    },
+  },
+});
 class Dfu {
   constructor() {}
 
@@ -38,46 +54,54 @@ class Dfu {
         }
       }
     });
-    const filePath = await this.getFilePath(deviceVersion, appBin, initPacket)
+    const filePath = await this.getFilePath(deviceVersion, appBin, initPacket);
     const error = await NordicDfu.startDFU({
       deviceName: device.name,
       deviceAddress: device.deviceId,
       filePath: filePath,
-      dfuOptions: {
-        ...{
-          [DeviceVersion.V1]: { forceDfu: true },
-          [DeviceVersion.V2]: {
-            unsafeExperimentalButtonlessServiceInSecureDfuEnabled: true,
-            disableNotification: true,
-            restoreBond: true,
-          },
-        }[deviceVersion],
-        startAsForegroundService: false,
-        keepBond: true,
-        packetReceiptNotificationsEnabled: true,
-      },
-    })
+      dfuOptions:
+        Capacitor.getPlatform() === "android"
+          ? {
+              ...{
+                [DeviceVersion.V1]: { forceDfu: true },
+                [DeviceVersion.V2]: {
+                  unsafeExperimentalButtonlessServiceInSecureDfuEnabled: true,
+                  disableNotification: true,
+                  restoreBond: true,
+                },
+              }[deviceVersion],
+              startAsForegroundService: false,
+              keepBond: true,
+              packetReceiptNotificationsEnabled: true,
+            }
+          : {},
+    });
     if (error) {
-      console.log(`DFU Error: ${error.message}`)
-      return FlashResult.FullFlashFailed
+      console.log(`DFU Error: ${error.message}`);
+      return FlashResult.FullFlashFailed;
     }
     return FlashResult.Success;
   }
 
-  private getFilePath = async (deviceVersion: DeviceVersion, appBin: SizedHexData, initPacket: Uint8Array) => {
+  private getFilePath = async (
+    deviceVersion: DeviceVersion,
+    appBin: SizedHexData,
+    initPacket: Uint8Array
+  ) => {
     if (deviceVersion === DeviceVersion.V1) {
-      return await this.createAppBinFile(appBin) 
+      return await this.createAppBinFile(appBin);
     }
-    return await this.createDfuZipFile(appBin, initPacket)
-  }
+    return await this.createDfuZipFile(appBin, initPacket);
+  };
 
   private createDfuZipFile = async (
     appBin: SizedHexData,
     initPacket: Uint8Array
   ): Promise<string> => {
     const zip = new JSZip();
-    zip.file("application.dat", initPacket);
-    zip.file("application.bin", appBin.data);
+    zip.file(appDatFilename, initPacket);
+    zip.file(appBinFilename, appBin.data);
+    zip.file("manifest.json", manifestData);
 
     const zipDataAsUint8Array = await zip.generateAsync({
       type: "uint8array",
@@ -85,22 +109,29 @@ class Dfu {
       compressionOptions: { level: 9 },
     });
 
-    const path = "dfu.zip";
-    const data = uint8ArrayToBase64(zipDataAsUint8Array);
-    const directory = Directory.Cache;
-    await Filesystem.writeFile({ path, data, directory });
-    const stat = await Filesystem.stat({ directory, path });
+    const stat = await this.writeCacheFile({
+      path: "dfu.zip",
+      data: uint8ArrayToBase64(zipDataAsUint8Array),
+    });
     return stat.uri;
   };
 
-  private createAppBinFile = async (appBin: SizedHexData): Promise<string> => {
-    const path = "dfu-app-bin.bin";
-    const data = uint8ArrayToBase64(appBin.data);
-    const directory = Directory.Cache;
-    await Filesystem.writeFile({ path, data, directory });
-    const stat = await Filesystem.stat({ directory, path });
+  private async createAppBinFile(appBin: SizedHexData): Promise<string> {
+    const stat = await this.writeCacheFile({
+      path: "dfu-app-bin.bin",
+      data: uint8ArrayToBase64(appBin.data),
+    });
     return stat.uri;
-  };
+  }
+
+  private async writeCacheFile(options: Omit<WriteFileOptions, "directory">) {
+    await Filesystem.writeFile({ directory: Directory.Cache, ...options });
+    const stat = await Filesystem.stat({
+      directory: Directory.Cache,
+      path: options.path,
+    });
+    return stat;
+  }
 }
 
 const uint8ArrayToBase64 = (uint8Array: Uint8Array): string => {

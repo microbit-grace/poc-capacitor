@@ -13,7 +13,7 @@ The tables below summarises what has been tested and the outcome.
 | Android         | V1                | ❌         | ✅ (MakeCode project)<br />❓ (Python project) |
 | Android         | V2                | ✅         | ✅ (MakeCode project)<br />❓ (Python project) |
 | iOS             | V1                | ❓         | ❓ (MakeCode project)<br />❓ (Python project) |
-| iOS             | V2                | ❓         | ❓ (MakeCode project)<br />❓ (Python project) |
+| iOS             | V2                | ✅         | ❓ (MakeCode project)<br />❓ (Python project) |
 
 ## Running the app
 
