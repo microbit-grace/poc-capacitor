@@ -10,13 +10,38 @@ const ledGridLetters: string[][] = [
 
 interface BluetoothPatternInputProps {
   onDeviceNameChange: (deviceName: string) => void;
+  initialValue?: string;
 }
+
+// Helper to find row index for a character at a given column
+const findRowForChar = (char: string, colIdx: number): number => {
+  for (let rowIdx = 0; rowIdx < ledGridLetters.length; rowIdx++) {
+    if (ledGridLetters[rowIdx][colIdx] === char) {
+      return rowIdx;
+    }
+  }
+  return 5; // Default to unselected
+};
 
 const BluetoothPatternInput = ({
   onDeviceNameChange,
+  initialValue,
 }: BluetoothPatternInputProps) => {
-  const [deviceChars, setDeviceChars] = useState<string[]>(Array(5).fill(""));
-  const [activeRows, setActiveRows] = useState<number[]>(Array(5).fill(5));
+  // Lazy initialization - function only runs once on mount
+  const [deviceChars, setDeviceChars] = useState<string[]>(() => {
+    if (initialValue && initialValue.length === 5) {
+      return initialValue.split("");
+    }
+    return Array(5).fill("");
+  });
+
+  const [activeRows, setActiveRows] = useState<number[]>(() => {
+    if (initialValue && initialValue.length === 5) {
+      const chars = initialValue.split("");
+      return chars.map((char, colIdx) => findRowForChar(char, colIdx));
+    }
+    return Array(5).fill(5);
+  });
 
   return (
     <div

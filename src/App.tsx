@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { MakeCodeFrame, MakeCodeProject } from "@microbit/makecode-embed";
-import { ReactNode, useCallback, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import "./App.css";
 import Flasher from "./flashing/flashing";
 import { FlashProgressStage, FlashResult, Progress } from "./flashing/model";
@@ -8,6 +8,7 @@ import Bluetooth from "./flashing/bluetooth";
 import FullFlasher from "./flashing/flashingFull";
 import Dfu from "./flashing/dfu";
 import BluetoothPatternInput from "./components/BluetoothPatternInput";
+import { useDeviceName } from "./hooks/useDeviceName";
 
 const starterProject = {
   text: {
@@ -40,10 +41,18 @@ function App() {
     []
   );
   const platform = Capacitor.getPlatform();
+  const { deviceName: savedDeviceName, saveDeviceName } = useDeviceName();
   const [open, setOpen] = useState<boolean>(false);
   const [step, setStep] = useState<Step>({ name: "initial" });
   const [hex, setHex] = useState<null | { name: string; hex: string }>(null);
   const [deviceName, setDeviceName] = useState<null | string>(null);
+
+  // Sync deviceName when savedDeviceName loads
+  useEffect(() => {
+    if (savedDeviceName && !deviceName) {
+      setDeviceName(savedDeviceName);
+    }
+  }, [savedDeviceName, deviceName]);
 
   const initialProject = useCallback(async () => [starterProject], []);
   const handleClose = useCallback(() => {
@@ -84,6 +93,8 @@ function App() {
     }
     const flashResult = await flasher.flash(deviceName, hex.hex, updateStep);
     if (flashResult === FlashResult.Success) {
+      // Save the device name for next time
+      await saveDeviceName(deviceName);
       // Success UI state is handled by updateStep when
       // stage reaches FlashProgressStage.Complete
       return;
@@ -199,7 +210,10 @@ function App() {
                   disabled: deviceName?.length !== 5,
                 }}
               >
-                <BluetoothPatternInput onDeviceNameChange={setDeviceName} />
+                <BluetoothPatternInput
+                  onDeviceNameChange={setDeviceName}
+                  initialValue={savedDeviceName ?? undefined}
+                />
               </Content>
             )}
             {step.name === "flashing" && (

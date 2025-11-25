@@ -10,6 +10,10 @@ PODS:
   - CapacitorFilesystem (7.1.4):
     - Capacitor
     - IONFilesystemLib (~> 1.0.1)
+  - CapacitorPreferences (7.0.2):
+    - Capacitor
+  - CapacitorStatusBar (7.0.3):
+    - Capacitor
   - IONFilesystemLib (1.0.1)
   - NordicDFU (4.16.0):
     - ZIPFoundation (= 0.9.19)
@@ -21,6 +25,8 @@ DEPENDENCIES:
   - CapacitorCommunityNordicDfu (from `../../node_modules/capacitor-community-nordic-dfu`)
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
+  - "CapacitorPreferences (from `../../node_modules/@capacitor/preferences`)"
+  - "CapacitorStatusBar (from `../../node_modules/@capacitor/status-bar`)"
 
 SPEC REPOS:
   trunk:
@@ -39,6 +45,10 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorFilesystem:
     :path: "../../node_modules/@capacitor/filesystem"
+  CapacitorPreferences:
+    :path: "../../node_modules/@capacitor/preferences"
+  CapacitorStatusBar:
+    :path: "../../node_modules/@capacitor/status-bar"
 
 SPEC CHECKSUMS:
   Capacitor: 09d9ff8e9618e8c4b3cab2bbee34a17215dd2fef
@@ -46,10 +56,12 @@ SPEC CHECKSUMS:
   CapacitorCommunityNordicDfu: 8e9000bab44d4d538381d549e687a28b1a1c5f63
   CapacitorCordova: bf648a636f3c153f652d312ae145fb508b6ffced
   CapacitorFilesystem: ac0a386949ed6c295a3dffa129ecd26b881ae5be
+  CapacitorPreferences: b583b5deb74e564c35968189d25d32c0fd41200d
+  CapacitorStatusBar: 7d8fcbd6768db014bd721d75e246590b014928e8
   IONFilesystemLib: 89258b8e3e85465da93127d25d7ce37f977e8a6f
   NordicDFU: 116a4ec458945889f8e0e71759e03b23c39c3482
   ZIPFoundation: b8c29ea7ae353b309bc810586181fd073cb3312c
 
-PODFILE CHECKSUM: 3eef2ace1e09593f4ed6504fd6de785a3902559e
+PODFILE CHECKSUM: 9846286e138f24127259509a6e558b8f0e0963fa
 
 COCOAPODS: 1.15.2
