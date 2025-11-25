@@ -120,7 +120,7 @@ function App() {
       name: "flash-error",
       message: errorMessage,
     });
-  }, [deviceName, flasher, hex, updateStep]);
+  }, [deviceName, flasher, hex, saveDeviceName, updateStep]);
 
   if (platform === "web") {
     return (
@@ -204,6 +204,7 @@ function App() {
             {step.name === "enter-pattern" && (
               <Content
                 heading="Draw your pattern"
+                onClose={handleClose}
                 cta={{
                   text: "Next",
                   onClick: () => handleFlash(),
