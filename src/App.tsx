@@ -131,7 +131,7 @@ function App() {
 
   return (
     <>
-      <div style={{ height: "90%", width: "100%" }}>
+      <div style={{ height: "100%", width: "100%" }}>
         <MakeCodeFrame
           style={{ height: "100%", width: "100%" }}
           controller={2}
@@ -146,7 +146,7 @@ function App() {
           style={{
             display: "flex",
             flexDirection: "column",
-            height: "90%",
+            height: "100%",
             width: "100%",
             position: "absolute",
             top: 0,

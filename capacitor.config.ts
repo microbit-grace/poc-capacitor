@@ -13,6 +13,11 @@ const config: CapacitorConfig = {
         noDeviceFound: "No device found",
       },
     },
+    StatusBar: {
+      style: "Light",
+      backgroundColor: "#000000",
+      overlaysWebView: false,
+    },
   },
 };
 
