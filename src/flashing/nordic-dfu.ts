@@ -9,7 +9,7 @@ import {
 import { SizedHexData } from "./irmHexUtils";
 import { Directory, Filesystem, WriteFileOptions } from "@capacitor/filesystem";
 import JSZip from "jszip";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, PluginListenerHandle } from "@capacitor/core";
 
 const appBinFilename = "application.bin";
 const appDatFilename = "application.dat";
@@ -97,68 +97,74 @@ export async function flashDfu(
   initPacket: Uint8Array,
   progress: Progress
 ): Promise<FlashResult> {
-  const listener = await NordicDfu.addListener(
-    "DFUStateChanged",
-    ({ state, data }) => {
-      switch (state) {
-        case DfuState.DFU_COMPLETED: {
-          progress(FlashProgressStage.Complete);
-          break;
-        }
-        case DfuState.DFU_ABORTED: {
-          progress(FlashProgressStage.Cancelled);
-          break;
-        }
-        case DfuState.DFU_PROGRESS: {
-          progress(FlashProgressStage.Full, data.percent);
-          break;
-        }
-        case DfuState.DFU_FAILED: {
-          progress(FlashProgressStage.Failed);
-          break;
-        }
-        default: {
-          console.log(`DFU state: ${state}`);
-        }
-      }
-    }
-  );
-
   const { uri: filePath, filename } = await getFilePath(
     deviceVersion,
     appBin,
     initPacket
   );
-
+  let listener: PluginListenerHandle | undefined;
   try {
-    const error = await NordicDfu.startDFU({
-      deviceName: device.name,
-      deviceAddress: device.deviceId,
-      filePath,
-      dfuOptions:
-        Capacitor.getPlatform() === "android"
-          ? {
-              ...{
-                [DeviceVersion.V1]: { forceDfu: true },
-                [DeviceVersion.V2]: {
-                  unsafeExperimentalButtonlessServiceInSecureDfuEnabled: true,
-                  disableNotification: true,
-                  restoreBond: true,
-                },
-              }[deviceVersion],
-              startAsForegroundService: false,
-              keepBond: true,
-              packetReceiptNotificationsEnabled: true,
+    // eslint-disable-next-line no-async-promise-executor
+    return await new Promise(async (resolve) => {
+      // Note this doesn't await the whole DFU process, just its initialization
+      listener = await NordicDfu.addListener(
+        "DFUStateChanged",
+        ({ state, data }) => {
+          switch (state) {
+            case DfuState.DFU_COMPLETED: {
+              progress(FlashProgressStage.Complete);
+              resolve(FlashResult.Success);
+              break;
             }
-          : {},
+            case DfuState.DFU_ABORTED: {
+              progress(FlashProgressStage.Cancelled);
+              resolve(FlashResult.Cancelled);
+              break;
+            }
+            case DfuState.DFU_PROGRESS: {
+              progress(FlashProgressStage.Full, data.percent);
+              break;
+            }
+            case DfuState.DFU_FAILED: {
+              progress(FlashProgressStage.Failed);
+              resolve(FlashResult.FullFlashFailed);
+              break;
+            }
+            default: {
+              console.log(`DFU state: ${state}`);
+            }
+          }
+        }
+      );
+      const error = await NordicDfu.startDFU({
+        deviceName: device.name,
+        deviceAddress: device.deviceId,
+        filePath,
+        dfuOptions:
+          Capacitor.getPlatform() === "android"
+            ? {
+                ...{
+                  [DeviceVersion.V1]: { forceDfu: true },
+                  [DeviceVersion.V2]: {
+                    unsafeExperimentalButtonlessServiceInSecureDfuEnabled: true,
+                    disableNotification: true,
+                    restoreBond: true,
+                  },
+                }[deviceVersion],
+                startAsForegroundService: false,
+                keepBond: true,
+                packetReceiptNotificationsEnabled: true,
+              }
+            : {},
+      });
+      if (error) {
+        console.log(`DFU Error: ${error.message}`);
+        resolve(FlashResult.FullFlashFailed);
+      }
+      // Final resolution will come from listener callbacks.
     });
-    if (error) {
-      console.log(`DFU Error: ${error.message}`);
-      return FlashResult.FullFlashFailed;
-    }
-    return FlashResult.Success;
   } finally {
-    await listener.remove();
+    await listener?.remove();
     await cleanupTemporaryFile(filename);
   }
 }
