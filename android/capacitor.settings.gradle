@@ -14,5 +14,5 @@ project(':capacitor-preferences').projectDir = new File('../node_modules/@capaci
 include ':capacitor-status-bar'
 project(':capacitor-status-bar').projectDir = new File('../node_modules/@capacitor/status-bar/android')
 
-include ':capacitor-community-nordic-dfu'
-project(':capacitor-community-nordic-dfu').projectDir = new File('../node_modules/capacitor-community-nordic-dfu/android')
+include ':microbit-capacitor-community-nordic-dfu'
+project(':microbit-capacitor-community-nordic-dfu').projectDir = new File('../node_modules/@microbit/capacitor-community-nordic-dfu/android')

@@ -13,7 +13,7 @@ dependencies {
     implementation project(':capacitor-filesystem')
     implementation project(':capacitor-preferences')
     implementation project(':capacitor-status-bar')
-    implementation project(':capacitor-community-nordic-dfu')
+    implementation project(':microbit-capacitor-community-nordic-dfu')
 
 }
 

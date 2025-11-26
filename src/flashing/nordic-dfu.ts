@@ -1,5 +1,5 @@
 import { BleDevice } from "@capacitor-community/bluetooth-le";
-import { DfuState, NordicDfu } from "capacitor-community-nordic-dfu";
+import { DfuState, NordicDfu } from "@microbit/capacitor-community-nordic-dfu";
 import {
   DeviceVersion,
   FlashProgressStage,
