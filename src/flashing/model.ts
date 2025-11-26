@@ -7,7 +7,7 @@ export enum FlashResult {
   FullFlashFailed = "FullFlashFailed",
   PartialFlashFailed = "PartialFlashFailed",
   Cancelled = "Cancelled",
-  Success = "Success"
+  Success = "Success",
 }
 
 export enum FlashProgressStage {
@@ -17,9 +17,6 @@ export enum FlashProgressStage {
   Connecting = "Connecting",
   Partial = "PartialFlashing",
   Full = "FullFlashing",
-  Complete = "Complete",
-  Cancelled = "Cancelled",
-  Failed = "Failed"
 }
 
 export enum DeviceVersion {

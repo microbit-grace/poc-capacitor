@@ -112,12 +112,10 @@ export async function flashDfu(
         ({ state, data }) => {
           switch (state) {
             case DfuState.DFU_COMPLETED: {
-              progress(FlashProgressStage.Complete);
               resolve(FlashResult.Success);
               break;
             }
             case DfuState.DFU_ABORTED: {
-              progress(FlashProgressStage.Cancelled);
               resolve(FlashResult.Cancelled);
               break;
             }
@@ -126,7 +124,6 @@ export async function flashDfu(
               break;
             }
             case DfuState.DFU_FAILED: {
-              progress(FlashProgressStage.Failed);
               resolve(FlashResult.FullFlashFailed);
               break;
             }

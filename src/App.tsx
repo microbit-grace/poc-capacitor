@@ -62,9 +62,6 @@ function App() {
       [FlashProgressStage.Partial]: "Sending code",
       [FlashProgressStage.Full]:
         "Sending code. This can take a while the first time but it will be quicker after that.",
-      [FlashProgressStage.Complete]: "Successfully downloaded",
-      [FlashProgressStage.Cancelled]: "Cancelled",
-      [FlashProgressStage.Failed]: "Failed",
     }[progressStage];
     setStep({ name: "flashing", progress, message });
   }, []);
@@ -88,8 +85,9 @@ function App() {
     if (flashResult === FlashResult.Success) {
       // Save the device name for next time
       await saveDeviceName(deviceName);
-      // Success UI state is handled by updateStep when
-      // stage reaches FlashProgressStage.Complete
+      setStep({
+        name: "success",
+      });
       return;
     }
     const errorMessage = {
