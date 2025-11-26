@@ -214,11 +214,22 @@ function App() {
                 cta={{
                   text: "Finished",
                   onClick: handleClose,
-                  disabled: step.message !== "Successfully downloaded",
+                  disabled: true,
                 }}
               >
                 {step.progress && <p>Progress: {step.progress} %</p>}
                 <p>{step.message}</p>
+              </Content>
+            )}
+            {step.name === "success" && (
+              <Content
+                heading="Completed"
+                cta={{
+                  text: "Finished",
+                  onClick: handleClose,
+                }}
+              >
+                <p>Successfully downloaded</p>
               </Content>
             )}
             {step.name === "flash-error" && (
