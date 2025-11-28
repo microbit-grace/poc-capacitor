@@ -3,9 +3,6 @@ PODS:
     - CapacitorCordova
   - CapacitorCommunityBluetoothLe (7.2.0):
     - Capacitor
-  - CapacitorCommunityNordicDfu (7.0.0):
-    - Capacitor
-    - NordicDFU (~> 4.16.0)
   - CapacitorCordova (7.4.4)
   - CapacitorFilesystem (7.1.4):
     - Capacitor
@@ -15,6 +12,9 @@ PODS:
   - CapacitorStatusBar (7.0.3):
     - Capacitor
   - IONFilesystemLib (1.0.1)
+  - MicrobitCapacitorCommunityNordicDfu (7.0.0-microbit.2):
+    - Capacitor
+    - NordicDFU (~> 4.16.0)
   - NordicDFU (4.16.0):
     - ZIPFoundation (= 0.9.19)
   - ZIPFoundation (0.9.19)
@@ -22,11 +22,11 @@ PODS:
 DEPENDENCIES:
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorCommunityBluetoothLe (from `../../node_modules/@capacitor-community/bluetooth-le`)"
-  - CapacitorCommunityNordicDfu (from `../../node_modules/capacitor-community-nordic-dfu`)
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
   - "CapacitorPreferences (from `../../node_modules/@capacitor/preferences`)"
   - "CapacitorStatusBar (from `../../node_modules/@capacitor/status-bar`)"
+  - "MicrobitCapacitorCommunityNordicDfu (from `../../node_modules/@microbit/capacitor-community-nordic-dfu`)"
 
 SPEC REPOS:
   trunk:
@@ -39,8 +39,6 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorCommunityBluetoothLe:
     :path: "../../node_modules/@capacitor-community/bluetooth-le"
-  CapacitorCommunityNordicDfu:
-    :path: "../../node_modules/capacitor-community-nordic-dfu"
   CapacitorCordova:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorFilesystem:
@@ -49,19 +47,21 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/preferences"
   CapacitorStatusBar:
     :path: "../../node_modules/@capacitor/status-bar"
+  MicrobitCapacitorCommunityNordicDfu:
+    :path: "../../node_modules/@microbit/capacitor-community-nordic-dfu"
 
 SPEC CHECKSUMS:
   Capacitor: 09d9ff8e9618e8c4b3cab2bbee34a17215dd2fef
   CapacitorCommunityBluetoothLe: ed9743fc77d7feca5c017e28bd9255a656615cc3
-  CapacitorCommunityNordicDfu: 8e9000bab44d4d538381d549e687a28b1a1c5f63
   CapacitorCordova: bf648a636f3c153f652d312ae145fb508b6ffced
   CapacitorFilesystem: ac0a386949ed6c295a3dffa129ecd26b881ae5be
   CapacitorPreferences: b583b5deb74e564c35968189d25d32c0fd41200d
   CapacitorStatusBar: 7d8fcbd6768db014bd721d75e246590b014928e8
   IONFilesystemLib: 89258b8e3e85465da93127d25d7ce37f977e8a6f
+  MicrobitCapacitorCommunityNordicDfu: 16171c5e85698a3c35025c93c4739a69456a4500
   NordicDFU: 116a4ec458945889f8e0e71759e03b23c39c3482
   ZIPFoundation: b8c29ea7ae353b309bc810586181fd073cb3312c
 
-PODFILE CHECKSUM: 9846286e138f24127259509a6e558b8f0e0963fa
+PODFILE CHECKSUM: 0f8c3461a15328855c752058ec090786f6c9ba68
 
 COCOAPODS: 1.15.2

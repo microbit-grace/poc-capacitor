@@ -15,7 +15,7 @@ def capacitor_pods
   pod 'CapacitorFilesystem', :path => '../../node_modules/@capacitor/filesystem'
   pod 'CapacitorPreferences', :path => '../../node_modules/@capacitor/preferences'
   pod 'CapacitorStatusBar', :path => '../../node_modules/@capacitor/status-bar'
-  pod 'CapacitorCommunityNordicDfu', :path => '../../node_modules/capacitor-community-nordic-dfu'
+  pod 'MicrobitCapacitorCommunityNordicDfu', :path => '../../node_modules/@microbit/capacitor-community-nordic-dfu'
 end
 
 target 'App' do

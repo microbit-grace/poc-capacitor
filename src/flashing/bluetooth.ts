@@ -1,5 +1,6 @@
 import { BleClient, BleDevice } from "@capacitor-community/bluetooth-le";
 import { Capacitor } from "@capacitor/core";
+import BluetoothNotificationManager from "./bluetooth-notifications";
 
 export enum BluetoothInitializationResult {
   MissingPermissions = "MissingPermissions",
@@ -21,7 +22,7 @@ export const bondingTimeoutInMs = 10_000;
 export const connectTimeoutInMs = 10_000;
 
 const isAndroid = () => Capacitor.getPlatform() === "android";
-
+const notificationManager = new BluetoothNotificationManager();
 /**
  * Initializes BLE.
  */
@@ -135,22 +136,20 @@ export async function characteristicWriteNotificationWait(
   notificationId: number | null = null,
   isFinalNotification: (p: Uint8Array) => boolean = () => true
 ): Promise<BluetoothResult> {
-  // Set up notification listener BEFORE writing (if needed)
   let notificationPromise: Promise<Uint8Array> | null = null;
+  let notificationListener: ((data: Uint8Array) => void) | null = null;
 
   if (notificationId !== null) {
     notificationPromise = new Promise<Uint8Array>((resolve, reject) => {
-      BleClient.startNotifications(
-        deviceId,
-        serviceId,
-        characteristicId,
-        (value: DataView) => {
-          const bytes = new Uint8Array(value.buffer);
-          if (bytes[0] === notificationId && isFinalNotification(bytes)) {
-            resolve(bytes);
-          }
+      notificationListener = (bytes: Uint8Array) => {
+        if (bytes[0] === notificationId && isFinalNotification(bytes)) {
+          resolve(bytes);
         }
-      ).catch(reject);
+      };
+
+      notificationManager
+        .subscribe(deviceId, serviceId, characteristicId, notificationListener)
+        .catch(reject);
     });
   }
 
@@ -175,9 +174,21 @@ export async function characteristicWriteNotificationWait(
     console.error("Write or notification failed:", error);
     return { status: false, value: null };
   } finally {
-    // Always cleanup notification listener
-    if (notificationId !== null) {
-      await BleClient.stopNotifications(deviceId, serviceId, characteristicId);
+    if (notificationId !== null && notificationListener) {
+      notificationManager.unsubscribe(
+        deviceId,
+        serviceId,
+        characteristicId,
+        notificationListener
+      );
     }
   }
+}
+
+export async function cleanupCharacteristicNotifications(
+  deviceId: string,
+  serviceId: string,
+  characteristicId: string
+): Promise<void> {
+  await notificationManager.cleanup(deviceId, serviceId, characteristicId);
 }
