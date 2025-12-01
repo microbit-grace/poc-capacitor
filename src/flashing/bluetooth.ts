@@ -146,11 +146,11 @@ export async function connectHandlingBond(device: BleDevice): Promise<boolean> {
       try {
         await waitForDisconnect(
           disconnectedPreBondDance,
+          // TODO: find lower bound for the sake of iOS
           5000,
           "post-bond automatic disconnect"
         );
       } catch (e) {
-        // At this point on iOS we could return.
         if (!isAndroid()) {
           console.log(
             "iOS: No disconnect after bond, assuming connection is stable"
