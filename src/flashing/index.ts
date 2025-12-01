@@ -6,6 +6,7 @@ import {
   bondDevice,
   checkBondState,
   connectTimeoutInMs,
+  disconnect,
 } from "./bluetooth";
 import { MICROBIT_DFU_SERVICE, MICROBIT_SECURE_DFU_SERVICE } from "./constants";
 import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
@@ -70,9 +71,7 @@ async function flashDevice(
       (deviceId: string) => {
         console.log(`Disconnected with device id: ${deviceId}`);
       },
-      {
-        timeout: connectTimeoutInMs,
-      }
+      { timeout: connectTimeoutInMs }
     );
   } catch (error) {
     console.error(error);
@@ -143,7 +142,7 @@ async function flashDevice(
     console.error("Failed to Connect", e);
     return FlashResult.FailedToConnect;
   } finally {
-    await BleClient.disconnect(deviceId);
+    await disconnect(deviceId);
   }
 }
 
