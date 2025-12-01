@@ -2,6 +2,7 @@ import {
   WriteType,
   characteristicWriteNotificationWait,
   cleanupCharacteristicNotifications,
+  disconnect,
 } from "./bluetooth";
 import { createAppBin } from "./irmHexUtils";
 import {
@@ -47,7 +48,7 @@ export async function fullFlash(
       if (!rebooted) {
         return FlashResult.FullFlashFailed;
       }
-      await BleClient.disconnect(device.deviceId);
+      await disconnect(device.deviceId);
       await delay(500);
       await BleClient.connect(device.deviceId);
 
@@ -58,7 +59,7 @@ export async function fullFlash(
     }
   } finally {
     // The service opens its own connection.
-    await BleClient.disconnect(device.deviceId);
+    await disconnect(device.deviceId);
   }
 
   const appBin = createAppBin(appHexData, deviceVersion);

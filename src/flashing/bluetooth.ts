@@ -192,3 +192,8 @@ export async function cleanupCharacteristicNotifications(
 ): Promise<void> {
   await notificationManager.cleanup(deviceId, serviceId, characteristicId);
 }
+
+export async function disconnect(deviceId: string): Promise<void> {
+  await notificationManager.cleanupAll();
+  await BleClient.disconnect(deviceId);
+}
