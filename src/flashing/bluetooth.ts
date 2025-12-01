@@ -1,6 +1,15 @@
-import { BleClient, BleDevice } from "@capacitor-community/bluetooth-le";
+import {
+  BleClient,
+  BleDevice,
+  numbersToDataView,
+} from "@capacitor-community/bluetooth-le";
 import { Capacitor } from "@capacitor/core";
+import { delay } from "../utils";
 import BluetoothNotificationManager from "./bluetooth-notifications";
+import {
+  PARTIAL_FLASH_CHARACTERISTIC,
+  PARTIAL_FLASHING_SERVICE,
+} from "./constants";
 
 export enum BluetoothInitializationResult {
   MissingPermissions = "MissingPermissions",
@@ -22,6 +31,7 @@ export const bondingTimeoutInMs = 10_000;
 export const connectTimeoutInMs = 10_000;
 
 const isAndroid = () => Capacitor.getPlatform() === "android";
+const isIos = () => Capacitor.getPlatform() === "ios";
 const notificationManager = new BluetoothNotificationManager();
 /**
  * Initializes BLE.
@@ -196,4 +206,111 @@ export async function cleanupCharacteristicNotifications(
 export async function disconnect(deviceId: string): Promise<void> {
   await notificationManager.cleanupAll();
   await BleClient.disconnect(deviceId);
+}
+
+export async function connect(deviceId: string) {
+  // Wait ~2s for disconnect. This occurs when pairing with micro:bit the first
+  // time. micro:bit disconnects as it shows tick icon.
+  const connectThenMaybeDisconnect = new Promise<boolean>((resolve, reject) => {
+    const onDisconnect = (id: string) => {
+      console.log(`Disconnected with device id: ${id}`);
+      resolve(false);
+    };
+    BleClient.connect(deviceId, onDisconnect, {
+      timeout: connectTimeoutInMs,
+    })
+      .then(async () => {
+        // For iOS, connect promise resolves even when user has not interacted
+        // with the pairing dialog so we need to manually check and implement
+        // connect timeout.
+        if (isIos()) {
+          const bonded = await pollingCheckIsIosBonded(
+            deviceId,
+            connectTimeoutInMs
+          );
+          if (!bonded) {
+            reject("Connection timeout");
+          }
+        }
+        // Wait for disconnect, otherwise assume that disconnect will not occur.
+        await delay(3000);
+        resolve(true);
+      })
+      .catch(reject);
+  });
+
+  const connected = await connectThenMaybeDisconnect;
+
+  if (!connected) {
+    console.log("Attempt reconnect");
+    await BleClient.connect(
+      deviceId,
+      (id: string) => console.log(`Disconnected with device id: ${id}`),
+      { timeout: 12_000 }
+    );
+
+    // Reset micro:bit so that there is sufficient time available for micro:bit
+    // to partial flash without it auto-resetting.
+    console.log("Reset micro:bit");
+    await BleClient.writeWithoutResponse(
+      deviceId,
+      PARTIAL_FLASHING_SERVICE,
+      PARTIAL_FLASH_CHARACTERISTIC,
+      numbersToDataView([0xff])
+    );
+    // Wait for reboot.
+    await delay(2000);
+
+    await BleClient.connect(
+      deviceId,
+      (id: string) => console.log(`Disconnected with device id: ${id}`),
+      { timeout: 12_000 }
+    );
+  }
+}
+
+async function pollingCheckIsIosBonded(
+  deviceId: string,
+  timeoutInMs: number
+): Promise<boolean> {
+  const startMs = Date.now();
+  while (Date.now() - startMs < timeoutInMs) {
+    // Check if connected by seeing if subscribe works.
+    if (await checkIsIosBonded(deviceId)) {
+      return true;
+    }
+    // Delay to not check so frequently.
+    await delay(2);
+  }
+  return await checkIsIosBonded(deviceId);
+}
+
+/**
+ * Check if device is bonded when using iOS.
+ * There is no callback for whether bonding is successful, so we test if
+ * notification can be set successfully as an indicator.
+ *
+ * See https://stackoverflow.com/questions/27836416/corebluetooth-pairing-feedback-callback.
+ * @param deviceId
+ * @returns true if device is bonded, otherwise returns false.
+ */
+async function checkIsIosBonded(deviceId: string): Promise<boolean> {
+  try {
+    const callback = () => {};
+    await notificationManager.subscribe(
+      deviceId,
+      PARTIAL_FLASHING_SERVICE,
+      PARTIAL_FLASH_CHARACTERISTIC,
+      callback
+    );
+    await notificationManager.cleanup(
+      deviceId,
+      PARTIAL_FLASHING_SERVICE,
+      PARTIAL_FLASH_CHARACTERISTIC
+    );
+    return true;
+  } catch (err) {
+    console.log("Not bonded yet", err);
+    return false;
+  }
 }
