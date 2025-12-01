@@ -1,15 +1,19 @@
 import { BleClient, BleDevice } from "@capacitor-community/bluetooth-le";
+import { delay } from "../utils";
 import {
   BluetoothInitializationResult,
-  initializeBluetooth,
-  findMatchingDevice,
-  bondDevice,
-  checkBondState,
+  connectHandlingBond,
   connectTimeoutInMs,
   disconnect,
+  findMatchingDevice,
+  initializeBluetooth,
 } from "./bluetooth";
-import { MICROBIT_DFU_SERVICE, MICROBIT_SECURE_DFU_SERVICE } from "./constants";
-import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
+import {
+  DEVICE_INFORMATION_SERVICE,
+  MODEL_NUMBER_CHARACTERISTIC,
+} from "./constants";
+import { fullFlash } from "./flashing-full";
+import partialFlash, { PartialFlashResult } from "./flashing-partial";
 import { createHexFileFromUniversal, hexStrToByte } from "./irmHexUtils";
 import {
   DeviceVersion,
@@ -17,9 +21,6 @@ import {
   FlashResult,
   Progress,
 } from "./model";
-import { delay } from "../utils";
-import partialFlash, { PartialFlashResult } from "./flashing-partial";
-import { fullFlash } from "./flashing-full";
 
 /**
  * High-level flashing flow.
@@ -61,10 +62,11 @@ async function flashDevice(
 ): Promise<FlashResult> {
   const { deviceId } = device;
   progress(FlashProgressStage.Connecting);
-  const bonded = await bondDevice(device);
-  if (!bonded) {
+  const connected = await connectHandlingBond(device);
+  if (!connected) {
     return FlashResult.FailedToConnect;
   }
+
   try {
     await BleClient.connect(
       device.deviceId,
@@ -86,14 +88,8 @@ async function flashDevice(
     // We could short-circuit this by racing it with the GATT callback on
     // Android 12+ and the equivalent on iOS
     await delay(1600);
+    await BleClient.discoverServices(deviceId);
 
-    await refreshServicesForV1IfDesiredServiceMissing(
-      device.deviceId,
-      MICROBIT_DFU_SERVICE
-    );
-
-    // The iOS app does this differently, via the device information service
-    // Perhaps that would let us make a more positive V1 ID.
     const deviceVersion = await getDeviceVersion(device);
     console.log(`Detected device version as ${deviceVersion}`);
 
@@ -123,15 +119,8 @@ async function flashDevice(
         return FlashResult.InvalidHex;
       }
       case PartialFlashResult.AttemptFullFlash: {
-        const isBonded = await checkBondState(device);
-        // TODO: This doesn't seem to work on V1, perhaps customise UI flow?
-        if (deviceVersion === DeviceVersion.V1) {
-          return FlashResult.PartialFlashFailed;
-        }
-        if (!isBonded) {
-          // User opted not to pair when asked
-          return FlashResult.Cancelled;
-        }
+        // We can also end up here because of cancellation of pairing.
+        // Can we detect this nicely?
         return fullFlash(device, deviceVersion, appHex.data, progress);
       }
       default: {
@@ -146,12 +135,18 @@ async function flashDevice(
   }
 }
 
-async function getDeviceVersion(device: BleDevice) {
-  // The iOS app does this differently, via the device information service
-  // Perhaps that would let us make a more positive V1 ID.
-  const services = await BleClient.getServices(device.deviceId);
-  const dfuService = services.find(
-    (s) => s.uuid === MICROBIT_SECURE_DFU_SERVICE
+async function getDeviceVersion(device: BleDevice): Promise<DeviceVersion> {
+  // Read model number from Device Information Service to determine version
+  const modelNumber = await BleClient.read(
+    device.deviceId,
+    DEVICE_INFORMATION_SERVICE,
+    MODEL_NUMBER_CHARACTERISTIC
   );
-  return dfuService ? DeviceVersion.V2 : DeviceVersion.V1;
+  const decoder = new TextDecoder();
+  const modelString = decoder.decode(modelNumber);
+  console.log(`Model number from Device Information Service: ${modelString}`);
+  if (modelString.includes("V2")) {
+    return DeviceVersion.V2;
+  }
+  return DeviceVersion.V1;
 }

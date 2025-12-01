@@ -58,7 +58,7 @@ const attemptPartialFlash = async (
   deviceVersion: DeviceVersion,
   progress: Progress
 ): Promise<PartialFlashResult> => {
-  console.log("partial flash");
+  console.log("Partial flash");
   progress(FlashProgressStage.Partial);
   const { deviceId } = device;
   const hex = forByteArray(appHexData);
@@ -77,7 +77,7 @@ const attemptPartialFlash = async (
 
   const { pos: dataPos, hash: fileHash } = codeData;
   console.log(
-    `Found${python ? " python " : " "}partial flash data at ${
+    `Found ${python ? "Python " : "MakeCode"} partial flash data at ${
       dataPos.line
     } at offset ${dataPos.part}`
   );
@@ -142,7 +142,6 @@ const attemptPartialFlash = async (
 
   // Ready to flash!
   // Loop through data
-  console.log("enter flashing loop");
   let addr0 = addr + part / 2; // two hex digits per byte
   let addr0Lo = addr0 % (256 * 256);
   let addr0Hi = addr0 / (256 * 256);
@@ -154,12 +153,7 @@ const attemptPartialFlash = async (
   // TODO - check size of code in file matches micro:bit
   let endOfFile = false;
   while (true) {
-    // Timeout if total is > 30 seconds
-    //if (SystemClock.elapsedRealtime() - startTime > 60000) {
-    //    log.i("Partial flashing has timed out")
-    //    return PartialFlashResult.AttemptFullFlash
-    // }
-    // Check if EOF
+    // TODO: Timeout if total is > 30 seconds
     if (
       endOfFile ||
       hex.getRecordTypeFromIndex(dataPos.line + lineCount) != 0
@@ -195,7 +189,7 @@ const attemptPartialFlash = async (
     } else if (writeCounter === 1) {
       offsetToSend = addr0Hi;
     }
-    console.log(
+    console.debug(
       `${packetNum} ${writeCounter} addr0 ${addr0} offsetToSend ${offsetToSend} line ${lineCount} addr ${addr} part ${part} data ${partData} endOfFile ${endOfFile}`
     );
     const chunk = recordToByteArray(partData, offsetToSend, packetNum);
@@ -271,11 +265,6 @@ const attemptPartialFlash = async (
   delay(100); // allow time for write to complete
   progress(FlashProgressStage.Partial, 100);
 
-  // Time execution
-  //val endTime = SystemClock.elapsedRealtime()
-  //val elapsedMilliSeconds = endTime - startTime
-  //val elapsedSeconds = elapsedMilliSeconds / 1000.0
-  //log.i("Flash Time: " + elapsedSeconds.toFloat() + " seconds")
   return PartialFlashResult.Success;
 };
 
@@ -386,8 +375,6 @@ const parseMakeCodeRegionCommandResponse = (
   const start = dataView.getUint32(offset, false);
   offset += 4;
   const end = dataView.getUint32(offset, false);
-  console.log(start);
-  console.log(end);
   if (start === 0 || start >= end) {
     return null;
   }

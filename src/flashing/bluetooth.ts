@@ -1,6 +1,17 @@
-import { BleClient, BleDevice } from "@capacitor-community/bluetooth-le";
+import {
+  BleClient,
+  BleDevice,
+  numbersToDataView,
+} from "@capacitor-community/bluetooth-le";
 import { Capacitor } from "@capacitor/core";
 import BluetoothNotificationManager from "./bluetooth-notifications";
+import {
+  MICROBIT_RESET_COMMAND,
+  MICROBIT_STATUS_COMMAND,
+  PARTIAL_FLASHING_SERVICE,
+  PARTIAL_FLASH_CHARACTERISTIC,
+} from "./constants";
+import { delay } from "../utils";
 
 export enum BluetoothInitializationResult {
   MissingPermissions = "MissingPermissions",
@@ -18,11 +29,12 @@ export type BluetoothResult = {
   value: Uint8Array | null;
 };
 
-export const bondingTimeoutInMs = 10_000;
+export const bondingTimeoutInMs = 40_000;
 export const connectTimeoutInMs = 10_000;
 
 const isAndroid = () => Capacitor.getPlatform() === "android";
 const notificationManager = new BluetoothNotificationManager();
+
 /**
  * Initializes BLE.
  */
@@ -88,27 +100,107 @@ export async function findMatchingDevice(
 }
 
 /**
- * Bonds with device.
+ * Wait for a disconnect event to fire with timeout.
+ *
+ * @param disconnectedRef Object with boolean flag that gets set to true on disconnect
+ * @param timeoutMs Maximum time to wait in milliseconds
+ * @param description Description for error messages
+ * @returns Promise that resolves when disconnected or rejects on timeout
+ */
+async function waitForDisconnect(
+  disconnectedRef: { current: boolean },
+  timeoutMs: number,
+  description: string
+): Promise<void> {
+  const startTime = Date.now();
+  while (!disconnectedRef.current && Date.now() - startTime < timeoutMs) {
+    await delay(100);
+  }
+  if (!disconnectedRef.current) {
+    throw new Error(
+      `Timeout waiting for disconnect (${description}) after ${timeoutMs}ms`
+    );
+  }
+  const elapsed = Date.now() - startTime;
+  console.log(`Disconnect confirmed after ${elapsed}ms (${description})`);
+}
+
+/**
+ * Bonds with device and handles the post-bond device state only returning
+ * when we can reattempt a connection with the device.
  *
  * @returns true if successful or false if unsuccessful.
  */
-export async function bondDevice(device: BleDevice): Promise<boolean> {
-  if (!isAndroid()) {
-    // Handled by the OS.
-    return true;
-  }
+export async function connectHandlingBond(device: BleDevice): Promise<boolean> {
   try {
-    const deviceId = device.deviceId;
-    const isAlreadyBonded = await BleClient.isBonded(deviceId);
-    if (isAlreadyBonded) {
-      return true;
+    const disconnectedPreBondDance = { current: false };
+    await BleClient.connect(device.deviceId, () => {
+      console.log("Disconnected from pre-bond-dance connection");
+      disconnectedPreBondDance.current = true;
+    });
+
+    const maybeJustBonded = await bondDeviceInternal(device);
+    if (maybeJustBonded) {
+      console.log("Potential new bond. Waiting for disconnect...");
+
+      try {
+        await waitForDisconnect(
+          disconnectedPreBondDance,
+          5000,
+          "post-bond automatic disconnect"
+        );
+      } catch (e) {
+        // At this point on iOS we could return.
+        if (!isAndroid()) {
+          console.log(
+            "iOS: No disconnect after bond, assuming connection is stable"
+          );
+          return true;
+        }
+        throw e;
+      }
+
+      console.log("Reconnecting after post-bond disconnect");
+      const disconnectedPostBondPreReset = { current: false };
+      await BleClient.connect(device.deviceId, () => {
+        console.log("Disconnected from post-bond, pre-reset connection");
+        disconnectedPostBondPreReset.current = true;
+      });
+
+      await delay(500);
+      console.log("Resetting to pairing mode");
+      await resetToMode(device.deviceId, MicroBitMode.Pairing);
+      await waitForDisconnect(
+        disconnectedPostBondPreReset,
+        10000,
+        "post-reset disconnect"
+      );
+
+      console.log("Reconnecting after reset to pairing mode");
+      await BleClient.connect(device.deviceId, () => {
+        console.log("Disconnected from post-bond-dance connection");
+      });
     }
-    await BleClient.createBond(deviceId, { timeout: bondingTimeoutInMs });
     return true;
-  } catch (error) {
-    console.error(error);
+  } catch (e) {
+    console.error(e);
     return false;
   }
+}
+
+async function bondDeviceInternal(device: BleDevice): Promise<boolean> {
+  if (!isAndroid()) {
+    // Just do something that requires a bond on iOS.
+    await getMicroBitStatus(device.deviceId);
+    // On iOS we now have to assume we just bonded as we can't tell.
+    return true;
+  }
+  const { deviceId } = device;
+  if (await BleClient.isBonded(deviceId)) {
+    return false;
+  }
+  await BleClient.createBond(deviceId, { timeout: bondingTimeoutInMs });
+  return true;
 }
 
 /**
@@ -196,4 +288,56 @@ export async function cleanupCharacteristicNotifications(
 export async function disconnect(deviceId: string): Promise<void> {
   await notificationManager.cleanupAll();
   await BleClient.disconnect(deviceId);
+}
+
+export enum MicroBitMode {
+  Pairing = 0x00,
+  Application = 0x01,
+}
+
+export async function getMicroBitStatus(
+  deviceId: string
+): Promise<{ mode: MicroBitMode; version: number } | null> {
+  console.log("Querying micro:bit status...");
+  const result = await characteristicWriteNotificationWait(
+    deviceId,
+    PARTIAL_FLASHING_SERVICE,
+    PARTIAL_FLASH_CHARACTERISTIC,
+    numbersToDataView([MICROBIT_STATUS_COMMAND]),
+    WriteType.NoResponse,
+    MICROBIT_STATUS_COMMAND
+  );
+
+  if (!result.status || !result.value) {
+    console.log("Failed to get micro:bit status response");
+    return null;
+  }
+
+  // Response format: [0xEE, version, mode]
+  const version = result.value[1];
+  const mode = result.value[2] as MicroBitMode;
+
+  console.log(
+    `Micro:bit status - Version: ${version}, Mode: ${
+      mode === MicroBitMode.Pairing ? "PAIRING" : "APPLICATION"
+    }`
+  );
+  return { version, mode };
+}
+
+export async function resetToMode(
+  deviceId: string,
+  mode: MicroBitMode
+): Promise<void> {
+  console.log(
+    `Sending MICROBIT_RESET command (mode=${
+      mode === MicroBitMode.Pairing ? "PAIRING" : "APPLICATION"
+    })`
+  );
+  await BleClient.writeWithoutResponse(
+    deviceId,
+    PARTIAL_FLASHING_SERVICE,
+    PARTIAL_FLASH_CHARACTERISTIC,
+    numbersToDataView([MICROBIT_RESET_COMMAND, mode])
+  );
 }

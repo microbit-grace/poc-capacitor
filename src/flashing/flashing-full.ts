@@ -1,9 +1,11 @@
 import {
-  WriteType,
-  characteristicWriteNotificationWait,
-  cleanupCharacteristicNotifications,
-  disconnect,
-} from "./bluetooth";
+  BleClient,
+  BleDevice,
+  numbersToDataView,
+} from "@capacitor-community/bluetooth-le";
+import { delay } from "../utils";
+import { disconnect } from "./bluetooth";
+import { MICROBIT_DFU_CHARACTERISTIC, MICROBIT_DFU_SERVICE } from "./constants";
 import { createAppBin } from "./irmHexUtils";
 import {
   DeviceVersion,
@@ -12,18 +14,6 @@ import {
   Progress,
 } from "./model";
 import { flashDfu } from "./nordic-dfu";
-import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
-import { delay } from "../utils";
-import {
-  MICROBIT_DFU_CHARACTERISTIC,
-  MICROBIT_DFU_SERVICE,
-  NORDIC_DFU_SERVICE,
-} from "./constants";
-import {
-  BleClient,
-  BleDevice,
-  numbersToDataView,
-} from "@capacitor-community/bluetooth-le";
 
 /**
  * Perform a full flash via Nordic's DFU service.
@@ -51,11 +41,6 @@ export async function fullFlash(
       await disconnect(device.deviceId);
       await delay(500);
       await BleClient.connect(device.deviceId);
-
-      await refreshServicesForV1IfDesiredServiceMissing(
-        device.deviceId,
-        NORDIC_DFU_SERVICE
-      );
     }
   } finally {
     // The service opens its own connection.
@@ -116,20 +101,15 @@ function createInitPacketAppDatFile(appSize: number): Uint8Array {
 }
 
 async function requestRebootToBootloaderV1Only(deviceId: string) {
-  const { status } = await characteristicWriteNotificationWait(
-    deviceId,
-    MICROBIT_DFU_SERVICE,
-    MICROBIT_DFU_CHARACTERISTIC,
-    numbersToDataView([0x01]),
-    WriteType.Default
-  );
-  // TODO: correct to just log this?
-  console.log(`Request DFU result ${status}`);
-
-  await cleanupCharacteristicNotifications(
-    deviceId,
-    MICROBIT_DFU_SERVICE,
-    MICROBIT_DFU_CHARACTERISTIC
-  );
-  return true;
+  try {
+    await BleClient.write(
+      deviceId,
+      MICROBIT_DFU_SERVICE,
+      MICROBIT_DFU_CHARACTERISTIC,
+      numbersToDataView([0x01])
+    );
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 }
