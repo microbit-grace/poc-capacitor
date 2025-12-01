@@ -1,4 +1,8 @@
-import { WriteType, characteristicWriteNotificationWait } from "./bluetooth";
+import {
+  WriteType,
+  characteristicWriteNotificationWait,
+  cleanupCharacteristicNotifications,
+} from "./bluetooth";
 import { createAppBin } from "./irmHexUtils";
 import {
   DeviceVersion,
@@ -120,5 +124,11 @@ async function requestRebootToBootloaderV1Only(deviceId: string) {
   );
   // TODO: correct to just log this?
   console.log(`Request DFU result ${status}`);
+
+  await cleanupCharacteristicNotifications(
+    deviceId,
+    MICROBIT_DFU_SERVICE,
+    MICROBIT_DFU_CHARACTERISTIC
+  );
   return true;
 }

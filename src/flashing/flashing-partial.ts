@@ -2,7 +2,11 @@ import {
   BleDevice,
   numbersToDataView,
 } from "@capacitor-community/bluetooth-le";
-import { characteristicWriteNotificationWait, WriteType } from "./bluetooth";
+import {
+  characteristicWriteNotificationWait,
+  cleanupCharacteristicNotifications,
+  WriteType,
+} from "./bluetooth";
 import {
   PARTIAL_FLASH_CHARACTERISTIC,
   PARTIAL_FLASHING_SERVICE,
@@ -32,6 +36,8 @@ const partialFlash = async (
   deviceVersion: DeviceVersion,
   progress: Progress
 ): Promise<PartialFlashResult> => {
+  console.log("partial flash");
+  progress(FlashProgressStage.Partial);
   const { deviceId } = device;
   const hex = forByteArray(appHexData);
   let python = false; // Not seem to be used.
@@ -235,6 +241,12 @@ const partialFlash = async (
     PARTIAL_FLASH_CHARACTERISTIC,
     endOfFlashPacket,
     WriteType.NoResponse
+  );
+
+  await cleanupCharacteristicNotifications(
+    deviceId,
+    PARTIAL_FLASHING_SERVICE,
+    PARTIAL_FLASH_CHARACTERISTIC
   );
   if (!status) {
     return PartialFlashResult.Failed;
@@ -559,4 +571,5 @@ const crc32 = (bytes: Uint8Array): number => {
   }
   return (crc ^ 0xffffffff) >>> 0;
 };
+
 export default partialFlash;
