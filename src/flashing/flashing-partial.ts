@@ -36,6 +36,28 @@ const partialFlash = async (
   deviceVersion: DeviceVersion,
   progress: Progress
 ): Promise<PartialFlashResult> => {
+  const result = await attemptPartialFlash(
+    device,
+    appHexData,
+    deviceVersion,
+    progress
+  );
+
+  const { deviceId } = device;
+  await cleanupCharacteristicNotifications(
+    deviceId,
+    PARTIAL_FLASHING_SERVICE,
+    PARTIAL_FLASH_CHARACTERISTIC
+  );
+  return result;
+};
+
+const attemptPartialFlash = async (
+  device: BleDevice,
+  appHexData: Uint8Array,
+  deviceVersion: DeviceVersion,
+  progress: Progress
+): Promise<PartialFlashResult> => {
   console.log("partial flash");
   progress(FlashProgressStage.Partial);
   const { deviceId } = device;
@@ -243,11 +265,6 @@ const partialFlash = async (
     WriteType.NoResponse
   );
 
-  await cleanupCharacteristicNotifications(
-    deviceId,
-    PARTIAL_FLASHING_SERVICE,
-    PARTIAL_FLASH_CHARACTERISTIC
-  );
   if (!status) {
     return PartialFlashResult.Failed;
   }
