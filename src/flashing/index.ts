@@ -68,7 +68,7 @@ async function flashDevice(
   try {
     await BleClient.connect(
       device.deviceId,
-      async (deviceId: string) => {
+      (deviceId: string) => {
         console.log(`Disconnected with device id: ${deviceId}`);
       },
       { timeout: connectTimeoutInMs }
