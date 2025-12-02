@@ -99,30 +99,46 @@ export async function findMatchingDevice(
   return await scanPromise;
 }
 
-/**
- * Wait for a disconnect event to fire with timeout.
- *
- * @param disconnectedRef Object with boolean flag that gets set to true on disconnect
- * @param timeoutMs Maximum time to wait in milliseconds
- * @param description Description for error messages
- * @returns Promise that resolves when disconnected or rejects on timeout
- */
-async function waitForDisconnect(
-  disconnectedRef: { current: boolean },
-  timeoutMs: number,
-  description: string
-): Promise<void> {
-  const startTime = Date.now();
-  while (!disconnectedRef.current && Date.now() - startTime < timeoutMs) {
-    await delay(100);
+class Device {
+  private tag: string | undefined;
+  private disconnectTracker:
+    | { promise: Promise<void>; onDisconnect: () => void }
+    | undefined;
+  constructor(private deviceId: string) {}
+  async connect(tag: string) {
+    this.tag = tag;
+    let onDisconnect: (() => void) | undefined;
+    const promise = new Promise<void>((resolve) => {
+      onDisconnect = () => {
+        this.log("Disconnected");
+        resolve();
+      };
+    });
+    this.disconnectTracker = { promise, onDisconnect: onDisconnect! };
+    this.log("Connecting");
+    await BleClient.connect(this.deviceId, onDisconnect, {
+      timeout: connectTimeoutInMs,
+    });
+    this.log("Connected");
   }
-  if (!disconnectedRef.current) {
-    throw new Error(
-      `Timeout waiting for disconnect (${description}) after ${timeoutMs}ms`
-    );
+  async waitForDisconnect(timeout: number): Promise<void> {
+    if (!this.disconnectTracker) {
+      this.log("Waiting for disconnect but not connected");
+      return;
+    }
+    this.log(`Waiting for disconnect (timeout ${timeout})`);
+    const result = await Promise.race([
+      this.disconnectTracker.promise,
+      new Promise((resolve) => setTimeout(() => resolve("timeout"), timeout)),
+    ]);
+    if (result === "timeout") {
+      this.log("Timeout waiting for disconnect");
+      throw new Error("Timeout waiting for disconnect");
+    }
   }
-  const elapsed = Date.now() - startTime;
-  console.log(`Disconnect confirmed after ${elapsed}ms (${description})`);
+  log(message: string) {
+    console.log(`[${this.tag}] ${message}`);
+  }
 }
 
 /**
@@ -131,55 +147,35 @@ async function waitForDisconnect(
  *
  * @returns true if successful or false if unsuccessful.
  */
-export async function connectHandlingBond(device: BleDevice): Promise<boolean> {
+export async function connectHandlingBond(deviceId: string): Promise<boolean> {
+  const device = new Device(deviceId);
+  const startTime = Date.now();
   try {
-    const disconnectedPreBondDance = { current: false };
-    await BleClient.connect(device.deviceId, () => {
-      console.log("Disconnected from pre-bond-dance connection");
-      disconnectedPreBondDance.current = true;
-    });
-
-    const maybeJustBonded = await bondDeviceInternal(device);
+    await device.connect("initial");
+    const maybeJustBonded = await bondDeviceInternal(deviceId);
     if (maybeJustBonded) {
-      console.log("Potential new bond. Waiting for disconnect...");
-
+      // If we did just bond then the device disconnects after 2_000 and then
+      // resets after a further 13_000 In future we'd like a firmware change
+      // that means it doesn't reset when partial flashing is in progress.
+      device.log(isAndroid() ? "New bond" : "Potential new bond");
       try {
-        await waitForDisconnect(
-          disconnectedPreBondDance,
-          // TODO: find lower bound for the sake of iOS
-          5000,
-          "post-bond automatic disconnect"
-        );
+        await device.waitForDisconnect(3000);
       } catch (e) {
         if (!isAndroid()) {
-          console.log(
-            "iOS: No disconnect after bond, assuming connection is stable"
-          );
+          device.log("No disconnect after bond, assuming connection is stable");
           return true;
         }
         throw e;
       }
 
-      console.log("Reconnecting after post-bond disconnect");
-      const disconnectedPostBondPreReset = { current: false };
-      await BleClient.connect(device.deviceId, () => {
-        console.log("Disconnected from post-bond, pre-reset connection");
-        disconnectedPostBondPreReset.current = true;
-      });
-
+      await device.connect("post-bond pre-reset");
+      // TODO: check this is needed, potentially inline into connect if always needed
       await delay(500);
-      console.log("Resetting to pairing mode");
-      await resetToMode(device.deviceId, MicroBitMode.Pairing);
-      await waitForDisconnect(
-        disconnectedPostBondPreReset,
-        10000,
-        "post-reset disconnect"
-      );
-
-      console.log("Reconnecting after reset to pairing mode");
-      await BleClient.connect(device.deviceId, () => {
-        console.log("Disconnected from post-bond-dance connection");
-      });
+      device.log("Resetting to pairing mode");
+      await resetToMode(deviceId, MicroBitMode.Pairing);
+      await device.waitForDisconnect(10_000);
+      await device.connect("post-bond-dance");
+      device.log(`Connection ready; took ${Date.now() - startTime}`);
     }
     return true;
   } catch (e) {
@@ -188,14 +184,13 @@ export async function connectHandlingBond(device: BleDevice): Promise<boolean> {
   }
 }
 
-async function bondDeviceInternal(device: BleDevice): Promise<boolean> {
+async function bondDeviceInternal(deviceId: string): Promise<boolean> {
   if (!isAndroid()) {
     // Just do something that requires a bond on iOS.
-    await getMicroBitStatus(device.deviceId);
+    await getMicroBitStatus(deviceId);
     // On iOS we now have to assume we just bonded as we can't tell.
     return true;
   }
-  const { deviceId } = device;
   if (await BleClient.isBonded(deviceId)) {
     return false;
   }
@@ -298,7 +293,6 @@ export enum MicroBitMode {
 export async function getMicroBitStatus(
   deviceId: string
 ): Promise<{ mode: MicroBitMode; version: number } | null> {
-  console.log("Querying micro:bit status...");
   const result = await characteristicWriteNotificationWait(
     deviceId,
     PARTIAL_FLASHING_SERVICE,
@@ -316,12 +310,6 @@ export async function getMicroBitStatus(
   // Response format: [0xEE, version, mode]
   const version = result.value[1];
   const mode = result.value[2] as MicroBitMode;
-
-  console.log(
-    `Micro:bit status - Version: ${version}, Mode: ${
-      mode === MicroBitMode.Pairing ? "PAIRING" : "APPLICATION"
-    }`
-  );
   return { version, mode };
 }
 
@@ -329,11 +317,6 @@ export async function resetToMode(
   deviceId: string,
   mode: MicroBitMode
 ): Promise<void> {
-  console.log(
-    `Sending MICROBIT_RESET command (mode=${
-      mode === MicroBitMode.Pairing ? "PAIRING" : "APPLICATION"
-    })`
-  );
   await BleClient.writeWithoutResponse(
     deviceId,
     PARTIAL_FLASHING_SERVICE,
