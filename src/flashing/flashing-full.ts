@@ -31,20 +31,21 @@ export async function fullFlash(
 ): Promise<FlashResult> {
   console.log("Full flash");
   progress(FlashProgressStage.Full);
+  const { deviceId } = device;
 
   try {
     if (deviceVersion === DeviceVersion.V1) {
-      const rebooted = await requestRebootToBootloaderV1Only(device.deviceId);
+      const rebooted = await requestRebootToBootloaderV1Only(deviceId);
       if (!rebooted) {
         return FlashResult.FullFlashFailed;
       }
-      await disconnect(device.deviceId);
+      await disconnect(deviceId);
       await delay(500);
-      await BleClient.connect(device.deviceId);
+      await BleClient.connect(deviceId);
     }
   } finally {
     // The service opens its own connection.
-    await disconnect(device.deviceId);
+    await disconnect(deviceId);
   }
 
   const appBin = createAppBin(appHexData, deviceVersion);

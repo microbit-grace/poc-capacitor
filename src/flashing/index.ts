@@ -60,16 +60,16 @@ async function flashDevice(
   inputHex: Uint8Array,
   progress: Progress
 ): Promise<FlashResult> {
-  const { deviceId } = device;
   progress(FlashProgressStage.Connecting);
-  const connected = await connectHandlingBond(device);
+  const { deviceId } = device;
+  const connected = await connectHandlingBond(deviceId);
   if (!connected) {
     return FlashResult.FailedToConnect;
   }
 
   try {
     await BleClient.connect(
-      device.deviceId,
+      deviceId,
       (deviceId: string) => {
         console.log(`Disconnected with device id: ${deviceId}`);
       },
@@ -90,7 +90,7 @@ async function flashDevice(
     await delay(1600);
     await BleClient.discoverServices(deviceId);
 
-    const deviceVersion = await getDeviceVersion(device);
+    const deviceVersion = await getDeviceVersion(deviceId);
     console.log(`Detected device version as ${deviceVersion}`);
 
     const appHex = createHexFileFromUniversal(inputHex, deviceVersion);
@@ -99,7 +99,7 @@ async function flashDevice(
     }
 
     const partialFlashResult = await partialFlash(
-      device,
+      deviceId,
       appHex.data,
       deviceVersion,
       progress
@@ -135,10 +135,10 @@ async function flashDevice(
   }
 }
 
-async function getDeviceVersion(device: BleDevice): Promise<DeviceVersion> {
+async function getDeviceVersion(deviceId: string): Promise<DeviceVersion> {
   // Read model number from Device Information Service to determine version
   const modelNumber = await BleClient.read(
-    device.deviceId,
+    deviceId,
     DEVICE_INFORMATION_SERVICE,
     MODEL_NUMBER_CHARACTERISTIC
   );

@@ -1,7 +1,5 @@
-import {
-  BleDevice,
-  numbersToDataView,
-} from "@capacitor-community/bluetooth-le";
+import { numbersToDataView } from "@capacitor-community/bluetooth-le";
+import { delay } from "../utils";
 import {
   characteristicWriteNotificationWait,
   cleanupCharacteristicNotifications,
@@ -13,7 +11,6 @@ import {
 } from "./constants";
 import HexUtils, { forByteArray, recordToByteArray } from "./hex-utils";
 import { DeviceVersion, FlashProgressStage, Progress } from "./model";
-import { delay } from "../utils";
 
 export enum PartialFlashResult {
   Success = "Success",
@@ -31,19 +28,18 @@ const PACKET_STATE_WAITING = 0;
 const PACKET_STATE_RETRANSMIT = 0xaa;
 
 const partialFlash = async (
-  device: BleDevice,
+  deviceId: string,
   appHexData: Uint8Array,
   deviceVersion: DeviceVersion,
   progress: Progress
 ): Promise<PartialFlashResult> => {
   const result = await attemptPartialFlash(
-    device,
+    deviceId,
     appHexData,
     deviceVersion,
     progress
   );
 
-  const { deviceId } = device;
   await cleanupCharacteristicNotifications(
     deviceId,
     PARTIAL_FLASHING_SERVICE,
@@ -53,14 +49,13 @@ const partialFlash = async (
 };
 
 const attemptPartialFlash = async (
-  device: BleDevice,
+  deviceId: string,
   appHexData: Uint8Array,
   deviceVersion: DeviceVersion,
   progress: Progress
 ): Promise<PartialFlashResult> => {
   console.log("Partial flash");
   progress(FlashProgressStage.Partial);
-  const { deviceId } = device;
   const hex = forByteArray(appHexData);
   let python = false; // Not seem to be used.
   let codeData = findMakeCodeData(hex);
