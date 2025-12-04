@@ -4,7 +4,11 @@ import {
   numbersToDataView,
 } from "@capacitor-community/bluetooth-le";
 import { delay } from "../utils";
-import { MICROBIT_DFU_CHARACTERISTIC, MICROBIT_DFU_SERVICE } from "./constants";
+import {
+  MICROBIT_DFU_CHARACTERISTIC,
+  MICROBIT_DFU_SERVICE,
+  NORDIC_DFU_SERVICE,
+} from "./constants";
 import { createAppBin } from "./irmHexUtils";
 import {
   DeviceVersion,
@@ -13,6 +17,7 @@ import {
   Progress,
 } from "./model";
 import { flashDfu } from "./nordic-dfu";
+import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
 
 /**
  * Perform a full flash via Nordic's DFU service.
@@ -41,6 +46,11 @@ export async function fullFlash(
       await BleClient.disconnect(deviceId);
       await delay(500);
       await BleClient.connect(deviceId);
+
+      await refreshServicesForV1IfDesiredServiceMissing(
+        device.deviceId,
+        NORDIC_DFU_SERVICE
+      );
     }
   } finally {
     // The service opens its own connection.
