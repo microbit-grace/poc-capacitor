@@ -111,7 +111,7 @@ class Device {
     const promise = new Promise<void>((resolve) => {
       onDisconnect = () => {
         this.log("Disconnected");
-        resolve();
+        notificationManager.cleanupAll().then(resolve);
       };
     });
     this.disconnectTracker = { promise, onDisconnect: onDisconnect! };
