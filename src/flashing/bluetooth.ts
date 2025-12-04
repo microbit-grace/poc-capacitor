@@ -111,7 +111,7 @@ class Device {
     const promise = new Promise<void>((resolve) => {
       onDisconnect = () => {
         this.log("Disconnected");
-        notificationManager.disconnectedCleanup().then(resolve);
+        notificationManager.disconnectCleanup().then(resolve);
       };
     });
     this.disconnectTracker = { promise, onDisconnect: onDisconnect! };
@@ -282,7 +282,7 @@ export async function cleanupCharacteristicNotifications(
 
 export async function disconnect(deviceId: string): Promise<void> {
   await BleClient.disconnect(deviceId);
-  await notificationManager.disconnectedCleanup();
+  await notificationManager.disconnectCleanup();
 }
 
 export enum MicroBitMode {

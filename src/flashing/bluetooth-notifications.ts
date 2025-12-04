@@ -71,7 +71,7 @@ class BluetoothNotificationManager {
     }
   }
 
-  async disconnectedCleanup(): Promise<void> {
+  async disconnectCleanup(): Promise<void> {
     this.listeners = new Map<string, Set<(data: Uint8Array) => void>>();
   }
 }
