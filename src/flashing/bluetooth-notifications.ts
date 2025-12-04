@@ -19,14 +19,6 @@ class BluetoothNotificationManager {
     return `${deviceId}:${serviceId}:${characteristicId}`;
   }
 
-  private getInfoFromKey(key: string) {
-    const [deviceId, serviceId, characteristicId] = key.split(":");
-    if (!(deviceId && serviceId && characteristicId)) {
-      throw new Error("Notification manager: Invalid info from key");
-    }
-    return { deviceId, serviceId, characteristicId };
-  }
-
   async subscribe(
     deviceId: string,
     serviceId: string,
@@ -79,14 +71,8 @@ class BluetoothNotificationManager {
     }
   }
 
-  async cleanupAll(): Promise<void> {
-    const keys = Object.keys(this.listeners);
-    keys.forEach(async (key) => {
-      const { deviceId, serviceId, characteristicId } =
-        this.getInfoFromKey(key);
-      await BleClient.stopNotifications(deviceId, serviceId, characteristicId);
-      this.listeners.delete(key);
-    });
+  async disconnectedCleanup(): Promise<void> {
+    this.listeners = new Map<string, Set<(data: Uint8Array) => void>>();
   }
 }
 
