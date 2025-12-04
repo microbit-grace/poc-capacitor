@@ -3,8 +3,6 @@ import { delay } from "../utils";
 import {
   BluetoothInitializationResult,
   connectHandlingBond,
-  connectTimeoutInMs,
-  disconnect,
   findMatchingDevice,
   initializeBluetooth,
 } from "./bluetooth";
@@ -68,19 +66,6 @@ async function flashDevice(
   }
 
   try {
-    await BleClient.connect(
-      deviceId,
-      (deviceId: string) => {
-        console.log(`Disconnected with device id: ${deviceId}`);
-      },
-      { timeout: connectTimeoutInMs }
-    );
-  } catch (error) {
-    console.error(error);
-    return FlashResult.FailedToConnect;
-  }
-
-  try {
     // Taken from Nordic. See reasoning here: https://github.com/NordicSemiconductor/Android-DFU-Library/blob/e0ab213a369982ae9cf452b55783ba0bdc5a7916/dfu/src/main/java/no/nordicsemi/android/dfu/DfuBaseService.java#L888 */
     console.log(
       "Waiting for service changed notification before discovering services"
@@ -131,7 +116,7 @@ async function flashDevice(
     console.error("Failed to Connect", e);
     return FlashResult.FailedToConnect;
   } finally {
-    await disconnect(deviceId);
+    await BleClient.disconnect(deviceId);
   }
 }
 

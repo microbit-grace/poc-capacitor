@@ -2,7 +2,7 @@ import { numbersToDataView } from "@capacitor-community/bluetooth-le";
 import { delay } from "../utils";
 import {
   characteristicWriteNotificationWait,
-  cleanupCharacteristicNotifications,
+  notificationManager,
   WriteType,
 } from "./bluetooth";
 import {
@@ -33,6 +33,12 @@ const partialFlash = async (
   deviceVersion: DeviceVersion,
   progress: Progress
 ): Promise<PartialFlashResult> => {
+  await notificationManager.startNotifications(
+    deviceId,
+    PARTIAL_FLASHING_SERVICE,
+    PARTIAL_FLASH_CHARACTERISTIC
+  );
+
   const result = await attemptPartialFlash(
     deviceId,
     appHexData,
@@ -40,11 +46,12 @@ const partialFlash = async (
     progress
   );
 
-  await cleanupCharacteristicNotifications(
+  await notificationManager.stopNotifications(
     deviceId,
     PARTIAL_FLASHING_SERVICE,
     PARTIAL_FLASH_CHARACTERISTIC
   );
+
   return result;
 };
 
@@ -76,6 +83,7 @@ const attemptPartialFlash = async (
       dataPos.line
     } at offset ${dataPos.part}`
   );
+
   const deviceCodeResult = await characteristicWriteNotificationWait(
     deviceId,
     PARTIAL_FLASHING_SERVICE,

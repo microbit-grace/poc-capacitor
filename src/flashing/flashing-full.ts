@@ -4,7 +4,6 @@ import {
   numbersToDataView,
 } from "@capacitor-community/bluetooth-le";
 import { delay } from "../utils";
-import { disconnect } from "./bluetooth";
 import { MICROBIT_DFU_CHARACTERISTIC, MICROBIT_DFU_SERVICE } from "./constants";
 import { createAppBin } from "./irmHexUtils";
 import {
@@ -39,13 +38,13 @@ export async function fullFlash(
       if (!rebooted) {
         return FlashResult.FullFlashFailed;
       }
-      await disconnect(deviceId);
+      await BleClient.disconnect(deviceId);
       await delay(500);
       await BleClient.connect(deviceId);
     }
   } finally {
     // The service opens its own connection.
-    await disconnect(deviceId);
+    await BleClient.disconnect(deviceId);
   }
 
   const appBin = createAppBin(appHexData, deviceVersion);

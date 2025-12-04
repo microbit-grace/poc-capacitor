@@ -1,4 +1,4 @@
-import { BleClient } from "@capacitor-community/bluetooth-le";
+import { BleClient, TimeoutOptions } from "@capacitor-community/bluetooth-le";
 
 /**
  * Manages shared notification listeners per characteristic.
@@ -19,11 +19,11 @@ class BluetoothNotificationManager {
     return `${deviceId}:${serviceId}:${characteristicId}`;
   }
 
-  async subscribe(
+  async startNotifications(
     deviceId: string,
     serviceId: string,
     characteristicId: string,
-    callback: (data: Uint8Array) => void
+    options?: TimeoutOptions
   ): Promise<void> {
     const key = this.getKey(deviceId, serviceId, characteristicId);
 
@@ -37,11 +37,19 @@ class BluetoothNotificationManager {
           const bytes = new Uint8Array(value.buffer);
           // Notify all registered callbacks.
           this.listeners.get(key)?.forEach((cb) => cb(bytes));
-        }
+        },
+        options
       );
     }
+  }
 
-    // Add callback to listeners.
+  subscribe(
+    deviceId: string,
+    serviceId: string,
+    characteristicId: string,
+    callback: (data: Uint8Array) => void
+  ): void {
+    const key = this.getKey(deviceId, serviceId, characteristicId);
     if (!this.listeners.has(key)) {
       this.listeners.set(key, new Set());
     }
@@ -58,20 +66,17 @@ class BluetoothNotificationManager {
     this.listeners.get(key)?.delete(callback);
   }
 
-  async cleanup(
+  async stopNotifications(
     deviceId: string,
     serviceId: string,
     characteristicId: string
   ): Promise<void> {
+    await BleClient.stopNotifications(deviceId, serviceId, characteristicId);
     const key = this.getKey(deviceId, serviceId, characteristicId);
-
-    if (this.listeners.has(key)) {
-      await BleClient.stopNotifications(deviceId, serviceId, characteristicId);
-      this.listeners.delete(key);
-    }
+    this.listeners.delete(key);
   }
 
-  async disconnectCleanup(): Promise<void> {
+  disconnectCleanup() {
     this.listeners = new Map<string, Set<(data: Uint8Array) => void>>();
   }
 }
