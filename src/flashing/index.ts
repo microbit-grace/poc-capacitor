@@ -3,6 +3,7 @@ import { delay } from "../utils";
 import {
   BluetoothInitializationResult,
   connectHandlingBond,
+  Device,
   findMatchingDevice,
   initializeBluetooth,
 } from "./bluetooth";
@@ -54,18 +55,22 @@ export async function flash(
 }
 
 async function flashDevice(
-  device: BleDevice,
+  bleDevice: BleDevice,
   inputHex: Uint8Array,
   progress: Progress
 ): Promise<FlashResult> {
   progress(FlashProgressStage.Connecting);
-  const { deviceId } = device;
-  const connected = await connectHandlingBond(deviceId);
+  const { deviceId } = bleDevice;
+  const device = new Device(deviceId);
+  const connected = await connectHandlingBond(device);
   if (!connected) {
     return FlashResult.FailedToConnect;
   }
 
   try {
+    // TODO: Is this needed?
+    // On iOS, don't we already use the PF service above to trigger bonding.
+    // Old comment:
     // Taken from Nordic. See reasoning here: https://github.com/NordicSemiconductor/Android-DFU-Library/blob/e0ab213a369982ae9cf452b55783ba0bdc5a7916/dfu/src/main/java/no/nordicsemi/android/dfu/DfuBaseService.java#L888 */
     console.log(
       "Waiting for service changed notification before discovering services"
@@ -84,7 +89,7 @@ async function flashDevice(
     }
 
     const partialFlashResult = await partialFlash(
-      deviceId,
+      device,
       appHex.data,
       deviceVersion,
       progress
@@ -106,7 +111,7 @@ async function flashDevice(
       case PartialFlashResult.AttemptFullFlash: {
         // We can also end up here because of cancellation of pairing.
         // Can we detect this nicely?
-        return fullFlash(device, deviceVersion, appHex.data, progress);
+        return fullFlash(bleDevice, deviceVersion, appHex.data, progress);
       }
       default: {
         return FlashResult.Cancelled;

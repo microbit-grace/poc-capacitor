@@ -1,10 +1,6 @@
 import { numbersToDataView } from "@capacitor-community/bluetooth-le";
 import { delay } from "../utils";
-import {
-  characteristicWriteNotificationWait,
-  notificationManager,
-  WriteType,
-} from "./bluetooth";
+import { Device, WriteType } from "./bluetooth";
 import {
   PARTIAL_FLASH_CHARACTERISTIC,
   PARTIAL_FLASHING_SERVICE,
@@ -28,26 +24,24 @@ const PACKET_STATE_WAITING = 0;
 const PACKET_STATE_RETRANSMIT = 0xaa;
 
 const partialFlash = async (
-  deviceId: string,
+  device: Device,
   appHexData: Uint8Array,
   deviceVersion: DeviceVersion,
   progress: Progress
 ): Promise<PartialFlashResult> => {
-  await notificationManager.startNotifications(
-    deviceId,
+  await device.startNotifications(
     PARTIAL_FLASHING_SERVICE,
     PARTIAL_FLASH_CHARACTERISTIC
   );
 
   const result = await attemptPartialFlash(
-    deviceId,
+    device,
     appHexData,
     deviceVersion,
     progress
   );
 
-  await notificationManager.stopNotifications(
-    deviceId,
+  await device.stopNotifications(
     PARTIAL_FLASHING_SERVICE,
     PARTIAL_FLASH_CHARACTERISTIC
   );
@@ -56,7 +50,7 @@ const partialFlash = async (
 };
 
 const attemptPartialFlash = async (
-  deviceId: string,
+  device: Device,
   appHexData: Uint8Array,
   deviceVersion: DeviceVersion,
   progress: Progress
@@ -84,8 +78,7 @@ const attemptPartialFlash = async (
     } at offset ${dataPos.part}`
   );
 
-  const deviceCodeResult = await characteristicWriteNotificationWait(
-    deviceId,
+  const deviceCodeResult = await device.writeForNotification(
     PARTIAL_FLASHING_SERVICE,
     PARTIAL_FLASH_CHARACTERISTIC,
     numbersToDataView([REGION_INFO_COMMAND, REGION_MAKECODE]),
@@ -102,8 +95,7 @@ const attemptPartialFlash = async (
     return PartialFlashResult.AttemptFullFlash;
   }
 
-  const deviceHashResult = await characteristicWriteNotificationWait(
-    deviceId,
+  const deviceHashResult = await device.writeForNotification(
     PARTIAL_FLASHING_SERVICE,
     PARTIAL_FLASH_CHARACTERISTIC,
     numbersToDataView([REGION_INFO_COMMAND, REGION_DAL]),
@@ -201,8 +193,7 @@ const attemptPartialFlash = async (
     writeCounter++;
     let packetState = -1;
     if (writeCounter === 4) {
-      const result = await characteristicWriteNotificationWait(
-        deviceId,
+      const result = await device.writeForNotification(
         PARTIAL_FLASHING_SERVICE,
         PARTIAL_FLASH_CHARACTERISTIC,
         chunk,
@@ -217,8 +208,7 @@ const attemptPartialFlash = async (
       packetState = result.value[1];
       writeCounter = 0;
     } else {
-      const result = await characteristicWriteNotificationWait(
-        deviceId,
+      const result = await device.writeForNotification(
         PARTIAL_FLASHING_SERVICE,
         PARTIAL_FLASH_CHARACTERISTIC,
         chunk,
@@ -254,8 +244,7 @@ const attemptPartialFlash = async (
   delay(100); // allow time for write to complete
 
   const endOfFlashPacket = numbersToDataView([0x02]);
-  const { status } = await characteristicWriteNotificationWait(
-    deviceId,
+  const { status } = await device.writeForNotification(
     PARTIAL_FLASHING_SERVICE,
     PARTIAL_FLASH_CHARACTERISTIC,
     endOfFlashPacket,
