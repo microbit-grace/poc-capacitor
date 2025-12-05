@@ -3,13 +3,14 @@ import {
   BleDevice,
   numbersToDataView,
 } from "@capacitor-community/bluetooth-le";
+import MemoryMap from "nrf-intel-hex";
 import { delay } from "../utils";
 import {
   MICROBIT_DFU_CHARACTERISTIC,
   MICROBIT_DFU_SERVICE,
   NORDIC_DFU_SERVICE,
 } from "./constants";
-import { createAppBin } from "./irmHexUtils";
+import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
 import {
   DeviceVersion,
   FlashProgressStage,
@@ -17,7 +18,6 @@ import {
   Progress,
 } from "./model";
 import { flashDfu } from "./nordic-dfu";
-import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
 
 /**
  * Perform a full flash via Nordic's DFU service.
@@ -30,7 +30,7 @@ import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
 export async function fullFlash(
   device: BleDevice,
   deviceVersion: DeviceVersion,
-  appHexData: Uint8Array,
+  appHex: string,
   progress: Progress
 ): Promise<FlashResult> {
   console.log("Full flash");
@@ -57,13 +57,13 @@ export async function fullFlash(
     await BleClient.disconnect(deviceId);
   }
 
-  const appBin = createAppBin(appHexData, deviceVersion);
+  const appBin = createAppBin(appHex, deviceVersion);
   if (appBin === null) {
     console.log("Invalid hex (app bin case)");
     return FlashResult.InvalidHex;
   }
   console.log("Extracted app bin");
-  const initPacket = createInitPacketAppDatFile(appBin.size);
+  const initPacket = createInitPacketAppDatFile(appBin.length);
   return flashDfu(device, deviceVersion, appBin, initPacket, progress);
 }
 
@@ -123,3 +123,12 @@ async function requestRebootToBootloaderV1Only(deviceId: string) {
     return false;
   }
 }
+
+const createAppBin = (appHex: string, deviceVersion: DeviceVersion) => {
+  const memoryMap = MemoryMap.fromHex(appHex);
+  const flashSize = {
+    [DeviceVersion.V1]: 256 * 1024,
+    [DeviceVersion.V2]: 512 * 1024,
+  }[deviceVersion];
+  return memoryMap.slicePad(0, flashSize, 0xff);
+};

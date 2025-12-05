@@ -59,16 +59,13 @@ export class PartialFlashingService {
   /**
    * Writes a flash chunk.
    * Use writeFlashForNotification for every 4th chunk.
-   *
-   * @param chunk
-   * @returns
    */
-  async writeFlash(chunk: DataView) {
+  async writeFlash(source: Uint8Array, offset: number, packetNum: number) {
     return await BleClient.writeWithoutResponse(
       this.device.deviceId,
       PARTIAL_FLASHING_SERVICE,
       PARTIAL_FLASH_CHARACTERISTIC,
-      chunk
+      this.createWriteDataCommand(source, offset, packetNum)
     );
   }
 
@@ -76,11 +73,15 @@ export class PartialFlashingService {
    * Write a chunk and wait for a success/retransmit response.
    * The micro:bit notifies on every 4th chunk.
    */
-  async writeFlashForNotification(chunk: DataView): Promise<WriteFlashResult> {
+  async writeFlashForNotification(
+    source: Uint8Array,
+    offset: number,
+    packetNum: number
+  ): Promise<WriteFlashResult> {
     const result = await this.device.writeForNotification(
       PARTIAL_FLASHING_SERVICE,
       PARTIAL_FLASH_CHARACTERISTIC,
-      chunk,
+      this.createWriteDataCommand(source, offset, packetNum),
       WriteType.NoResponse,
       FLASH_COMMAND,
       (notificationValue: Uint8Array) =>
@@ -93,7 +94,27 @@ export class PartialFlashingService {
   }
 
   async writeEndOfFlashPacket() {
-    this.writeFlash(numbersToDataView([0x02]));
+    return await BleClient.writeWithoutResponse(
+      this.device.deviceId,
+      PARTIAL_FLASHING_SERVICE,
+      PARTIAL_FLASH_CHARACTERISTIC,
+      numbersToDataView([0x02])
+    );
+  }
+
+  private createWriteDataCommand(
+    source: Uint8Array,
+    offset: number,
+    packetNum: number
+  ): DataView {
+    const data = new DataView(new ArrayBuffer(20));
+    data.setUint8(0, 0x01);
+    data.setUint16(1, offset);
+    data.setUint8(3, packetNum);
+    for (let i = 0; i < 16; ++i) {
+      data.setUint8(4 + i, source[offset + i] ?? 0xff);
+    }
+    return data;
   }
 
   private async getRegionInfo(

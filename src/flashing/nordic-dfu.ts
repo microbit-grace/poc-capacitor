@@ -6,7 +6,6 @@ import {
   FlashResult,
   Progress,
 } from "./model";
-import { SizedHexData } from "./irmHexUtils";
 import { Directory, Filesystem, WriteFileOptions } from "@capacitor/filesystem";
 import JSZip from "jszip";
 import { Capacitor, PluginListenerHandle } from "@capacitor/core";
@@ -37,20 +36,20 @@ async function writeCacheFile(options: Omit<WriteFileOptions, "directory">) {
   return uri;
 }
 
-async function createAppBinFile(appBin: SizedHexData): Promise<string> {
+async function createAppBinFile(appBin: Uint8Array): Promise<string> {
   return await writeCacheFile({
     path: "dfu-app-bin.bin",
-    data: uint8ArrayToBase64(appBin.data),
+    data: uint8ArrayToBase64(appBin),
   });
 }
 
 async function createDfuZipFile(
-  appBin: SizedHexData,
+  appBin: Uint8Array,
   initPacket: Uint8Array
 ): Promise<string> {
   const zip = new JSZip();
   zip.file(appDatFilename, initPacket);
-  zip.file(appBinFilename, appBin.data);
+  zip.file(appBinFilename, appBin);
   zip.file("manifest.json", manifestData);
 
   const zipDataAsUint8Array = await zip.generateAsync({
@@ -67,7 +66,7 @@ async function createDfuZipFile(
 
 async function getFilePath(
   deviceVersion: DeviceVersion,
-  appBin: SizedHexData,
+  appBin: Uint8Array,
   initPacket: Uint8Array
 ): Promise<{ uri: string; filename: string }> {
   if (deviceVersion === DeviceVersion.V1) {
@@ -93,7 +92,7 @@ async function cleanupTemporaryFile(filename: string): Promise<void> {
 export async function flashDfu(
   device: BleDevice,
   deviceVersion: DeviceVersion,
-  appBin: SizedHexData,
+  appBin: Uint8Array,
   initPacket: Uint8Array,
   progress: Progress
 ): Promise<FlashResult> {
