@@ -279,8 +279,7 @@ export class Device {
 export async function connectHandlingBond(device: Device): Promise<boolean> {
   const startTime = Date.now();
   try {
-    await device.connect("initial");
-    const maybeJustBonded = await bondDeviceInternal(device);
+    const maybeJustBonded = await bondConnectDeviceInternal(device);
     if (maybeJustBonded) {
       // If we did just bond then the device disconnects after 2_000 and then
       // resets after a further 13_000 In future we'd like a firmware change
@@ -312,20 +311,24 @@ export async function connectHandlingBond(device: Device): Promise<boolean> {
   }
 }
 
-async function bondDeviceInternal(device: Device): Promise<boolean> {
+async function bondConnectDeviceInternal(device: Device): Promise<boolean> {
   const { deviceId } = device;
   if (isAndroid()) {
+    let justBonded = false;
     // This gets us a nicer pairing dialog than just going straight for the characteristic.
     if (!(await BleClient.isBonded(deviceId))) {
       await BleClient.createBond(deviceId, { timeout: bondingTimeoutInMs });
-      return true;
+      justBonded = true;
     }
-    return false;
+    await device.connect("initial");
+    return justBonded;
   } else {
     // Long timeout as this is the point that the pairing dialog will show.
     // If this responds very quickly maybe we could assume there was a bond?
     // At the moment we always do the disconnect dance so subsequent code will
-    // need to call startNotifications again.
+    // need to call startNotifications again. We need to be connected to
+    // startNotifications.
+    await device.connect("initial");
     await device.startNotifications(
       PARTIAL_FLASHING_SERVICE,
       PARTIAL_FLASH_CHARACTERISTIC,
