@@ -1,12 +1,15 @@
-import { numbersToDataView } from "@capacitor-community/bluetooth-le";
 import { delay } from "../utils";
-import { Device, WriteType } from "./bluetooth";
+import { Device } from "./bluetooth";
 import {
   PARTIAL_FLASH_CHARACTERISTIC,
   PARTIAL_FLASHING_SERVICE,
 } from "./constants";
 import HexUtils, { forByteArray, recordToByteArray } from "./hex-utils";
 import { DeviceVersion, FlashProgressStage, Progress } from "./model";
+import {
+  PartialFlashingService,
+  WriteFlashResult,
+} from "./partial-flashing-service";
 
 export enum PartialFlashResult {
   Success = "Success",
@@ -15,13 +18,6 @@ export enum PartialFlashResult {
   AttemptFullFlash = "AttemptFullFlash",
   FailedToConnect = "FailedToConnect",
 }
-
-const REGION_INFO_COMMAND = 0x0;
-const REGION_MAKECODE = 2;
-const REGION_DAL = 1;
-const FLASH_COMMAND = 0x1;
-const PACKET_STATE_WAITING = 0;
-const PACKET_STATE_RETRANSMIT = 0xaa;
 
 const partialFlash = async (
   device: Device,
@@ -57,207 +53,157 @@ const attemptPartialFlash = async (
 ): Promise<PartialFlashResult> => {
   console.log("Partial flash");
   progress(FlashProgressStage.Partial);
-  const hex = forByteArray(appHexData);
-  let python = false; // Not seem to be used.
-  let codeData = findMakeCodeData(hex);
-  if (codeData === null) {
-    codeData = findPythonData(deviceVersion, hex);
-    if (codeData !== null) {
-      python = true;
+  try {
+    const hex = forByteArray(appHexData);
+    let python = false; // Not seem to be used.
+    let codeData = findMakeCodeData(hex);
+    if (codeData === null) {
+      codeData = findPythonData(deviceVersion, hex);
+      if (codeData !== null) {
+        python = true;
+      }
     }
-  }
-  if (codeData === null) {
-    console.log("No partial flash data");
-    return PartialFlashResult.AttemptFullFlash;
-  }
+    if (codeData === null) {
+      console.log("No partial flash data");
+      return PartialFlashResult.AttemptFullFlash;
+    }
 
-  const { pos: dataPos, hash: fileHash } = codeData;
-  console.log(
-    `Found ${python ? "Python " : "MakeCode"} partial flash data at ${
-      dataPos.line
-    } at offset ${dataPos.part}`
-  );
-
-  const deviceCodeResult = await device.writeForNotification(
-    PARTIAL_FLASHING_SERVICE,
-    PARTIAL_FLASH_CHARACTERISTIC,
-    numbersToDataView([REGION_INFO_COMMAND, REGION_MAKECODE]),
-    // The Android app writes this with response but iOS objects as we don't
-    // advertise support for that
-    WriteType.NoResponse,
-    REGION_INFO_COMMAND
-  );
-  const deviceCodeRange = deviceCodeResult.value
-    ? parseMakeCodeRegionCommandResponse(deviceCodeResult.value)
-    : null;
-  if (deviceCodeRange === null) {
-    console.log("Could not read code region");
-    return PartialFlashResult.AttemptFullFlash;
-  }
-
-  const deviceHashResult = await device.writeForNotification(
-    PARTIAL_FLASHING_SERVICE,
-    PARTIAL_FLASH_CHARACTERISTIC,
-    numbersToDataView([REGION_INFO_COMMAND, REGION_DAL]),
-    // The Android app writes this with response but iOS objects as we don't
-    // advertise support for that
-    WriteType.NoResponse,
-    REGION_INFO_COMMAND
-  );
-  const deviceHash = deviceHashResult.value
-    ? parseDalRegionCommandResponse(deviceHashResult.value)
-    : null;
-  if (deviceHash == null) {
-    console.log("Could not read DAL region");
-    return PartialFlashResult.AttemptFullFlash;
-  }
-
-  // Compare DAL hash
-  if (fileHash !== deviceHash) {
+    const { pos: dataPos, hash: fileHash } = codeData;
     console.log(
-      `DAL hash comparison failed. Hex: ${fileHash} vs device: ${deviceHash}`
+      `Found ${python ? "Python " : "MakeCode"} partial flash data at ${
+        dataPos.line
+      } at offset ${dataPos.part}`
     );
-    return PartialFlashResult.AttemptFullFlash;
-  }
-  let writeCounter = 0;
-  const numOfLines = hex.numOfLines() - dataPos.line;
-  console.log(`Total lines: ${numOfLines}`);
-  let packetNum = 0;
-  let lineCount = 0;
-  let part = dataPos.part;
-  let line0 = 0;
-  let part0 = part;
-  let addrLo = hex.getRecordAddressFromIndex(dataPos.line + lineCount);
-  let addrHi = hex.getSegmentAddress(dataPos.line + lineCount);
-  let addr = addrLo + addrHi * 256 * 256;
-  let hexData: string;
-  let partData: string;
-  console.log(`Code start ${deviceCodeRange.start} end ${deviceCodeRange.end}`);
-  console.log(`First line ${addr}`);
 
-  // Ready to flash!
-  // Loop through data
-  let addr0 = addr + part / 2; // two hex digits per byte
-  let addr0Lo = addr0 % (256 * 256);
-  let addr0Hi = addr0 / (256 * 256);
-  if (deviceCodeRange.start !== addr0) {
-    console.log("Code start address doesn't match");
-    return PartialFlashResult.AttemptFullFlash;
-  }
+    const pf = new PartialFlashingService(device);
+    const deviceCodeRange = await pf.getMakeCodeRegion();
+    if (deviceCodeRange === null) {
+      console.log("Could not read code region");
+      return PartialFlashResult.AttemptFullFlash;
+    }
+    const dalHash = await pf.getDALRegionHash();
 
-  // TODO - check size of code in file matches micro:bit
-  let endOfFile = false;
-  while (true) {
-    // TODO: Timeout if total is > 30 seconds
-    if (
-      endOfFile ||
-      hex.getRecordTypeFromIndex(dataPos.line + lineCount) != 0
-    ) {
+    // Compare DAL hash
+    if (fileHash !== dalHash) {
+      console.log(
+        `DAL hash comparison failed. Hex: ${fileHash} vs device: ${dalHash}`
+      );
+      return PartialFlashResult.AttemptFullFlash;
+    }
+    let writeCounter = 0;
+    const numOfLines = hex.numOfLines() - dataPos.line;
+    console.log(`Total lines: ${numOfLines}`);
+    let packetNum = 0;
+    let lineCount = 0;
+    let part = dataPos.part;
+    let line0 = 0;
+    let part0 = part;
+    let addrLo = hex.getRecordAddressFromIndex(dataPos.line + lineCount);
+    let addrHi = hex.getSegmentAddress(dataPos.line + lineCount);
+    let addr = addrLo + addrHi * 256 * 256;
+    let hexData: string;
+    let partData: string;
+    console.log(
+      `Code start ${deviceCodeRange.start} end ${deviceCodeRange.end}`
+    );
+    console.log(`First line ${addr}`);
+
+    // Ready to flash!
+    // Loop through data
+    let addr0 = addr + part / 2; // two hex digits per byte
+    let addr0Lo = addr0 % (256 * 256);
+    let addr0Hi = addr0 / (256 * 256);
+    if (deviceCodeRange.start !== addr0) {
+      console.log("Code start address doesn't match");
+      return PartialFlashResult.AttemptFullFlash;
+    }
+
+    // TODO - check size of code in file matches micro:bit
+    let endOfFile = false;
+    while (true) {
+      // TODO: Timeout if total is > 30 seconds
+      if (
+        endOfFile ||
+        hex.getRecordTypeFromIndex(dataPos.line + lineCount) != 0
+      ) {
+        if (writeCounter === 0) {
+          break;
+        }
+        endOfFile = true;
+      }
+      if (endOfFile) {
+        // complete the batch of 4 packets with FF
+        const c32 = new Array(32).fill("F");
+        hexData = c32.join("");
+        partData = hexData;
+      } else {
+        addrLo = hex.getRecordAddressFromIndex(dataPos.line + lineCount);
+        addrHi = hex.getSegmentAddress(dataPos.line + lineCount);
+        addr = addrLo + addrHi * 256 * 256;
+        hexData = hex.getDataFromIndex(dataPos.line + lineCount);
+        partData =
+          part + 32 > hexData.length
+            ? hexData.substring(part)
+            : hexData.substring(part, part + 32);
+      }
+      let offsetToSend = 0;
       if (writeCounter === 0) {
-        break;
+        line0 = lineCount;
+        part0 = part;
+        addr0 = addr + part / 2; // two hex digits per byte
+        addr0Lo = addr0 % (256 * 256);
+        addr0Hi = addr0 / (256 * 256);
+        offsetToSend = addr0Lo;
+      } else if (writeCounter === 1) {
+        offsetToSend = addr0Hi;
       }
-      endOfFile = true;
-    }
-    if (endOfFile) {
-      // complete the batch of 4 packets with FF
-      const c32 = new Array(32).fill("F");
-      hexData = c32.join("");
-      partData = hexData;
-    } else {
-      addrLo = hex.getRecordAddressFromIndex(dataPos.line + lineCount);
-      addrHi = hex.getSegmentAddress(dataPos.line + lineCount);
-      addr = addrLo + addrHi * 256 * 256;
-      hexData = hex.getDataFromIndex(dataPos.line + lineCount);
-      partData =
-        part + 32 > hexData.length
-          ? hexData.substring(part)
-          : hexData.substring(part, part + 32);
-    }
-    let offsetToSend = 0;
-    if (writeCounter === 0) {
-      line0 = lineCount;
-      part0 = part;
-      addr0 = addr + part / 2; // two hex digits per byte
-      addr0Lo = addr0 % (256 * 256);
-      addr0Hi = addr0 / (256 * 256);
-      offsetToSend = addr0Lo;
-    } else if (writeCounter === 1) {
-      offsetToSend = addr0Hi;
-    }
-    console.debug(
-      `${packetNum} ${writeCounter} addr0 ${addr0} offsetToSend ${offsetToSend} line ${lineCount} addr ${addr} part ${part} data ${partData} endOfFile ${endOfFile}`
-    );
-    const chunk = recordToByteArray(partData, offsetToSend, packetNum);
-    // The micro:bit waits for 4 of our 16 byte writes and then sends a notification
-    // so we need to track which write we're on.
-    writeCounter++;
-    let packetState = -1;
-    if (writeCounter === 4) {
-      const result = await device.writeForNotification(
-        PARTIAL_FLASHING_SERVICE,
-        PARTIAL_FLASH_CHARACTERISTIC,
-        chunk,
-        WriteType.NoResponse,
-        FLASH_COMMAND,
-        (notificationValue: Uint8Array) =>
-          notificationValue[1] !== PACKET_STATE_WAITING
+      console.debug(
+        `${packetNum} ${writeCounter} addr0 ${addr0} offsetToSend ${offsetToSend} line ${lineCount} addr ${addr} part ${part} data ${partData} endOfFile ${endOfFile}`
       );
-      if (!result.status || result.value === null) {
-        return PartialFlashResult.Failed;
+      const chunk = recordToByteArray(partData, offsetToSend, packetNum);
+      // The micro:bit waits for 4 of our 16 byte writes and then sends a notification
+      // so we need to track which write we're on.
+      writeCounter++;
+      let batchResult: WriteFlashResult = WriteFlashResult.Success;
+      if (writeCounter === 4) {
+        batchResult = await pf.writeFlashForNotification(chunk);
+        writeCounter = 0;
+      } else {
+        await pf.writeFlash(chunk);
       }
-      packetState = result.value[1];
-      writeCounter = 0;
-    } else {
-      const result = await device.writeForNotification(
-        PARTIAL_FLASHING_SERVICE,
-        PARTIAL_FLASH_CHARACTERISTIC,
-        chunk,
-        WriteType.NoResponse
-      );
-      if (!result.status) {
-        return PartialFlashResult.Failed;
-      }
-    }
-    if (packetState === PACKET_STATE_RETRANSMIT) {
-      // Retransmit the same block next time around
-      lineCount = line0;
-      part = part0;
-      endOfFile = false;
-    } else {
-      progress(
-        FlashProgressStage.Partial,
-        Math.round((lineCount / numOfLines) * 100)
-      );
-      if (!endOfFile) {
-        // Next part
-        part += partData.length;
-        if (part >= hexData.length) {
-          part = 0;
-          lineCount += 1;
+      if (batchResult === WriteFlashResult.Retransmit) {
+        // Retransmit the same block next time around
+        lineCount = line0;
+        part = part0;
+        endOfFile = false;
+      } else {
+        progress(
+          FlashProgressStage.Partial,
+          Math.round((lineCount / numOfLines) * 100)
+        );
+        if (!endOfFile) {
+          // Next part
+          part += partData.length;
+          if (part >= hexData.length) {
+            part = 0;
+            lineCount += 1;
+          }
         }
       }
+
+      // Always increment packet #
+      packetNum += 1;
     }
+    delay(100); // allow time for write to complete
+    await pf.writeEndOfFlashPacket();
+    delay(100); // allow time for write to complete
+    progress(FlashProgressStage.Partial, 100);
 
-    // Always increment packet #
-    packetNum += 1;
-  }
-  delay(100); // allow time for write to complete
-
-  const endOfFlashPacket = numbersToDataView([0x02]);
-  const { status } = await device.writeForNotification(
-    PARTIAL_FLASHING_SERVICE,
-    PARTIAL_FLASH_CHARACTERISTIC,
-    endOfFlashPacket,
-    WriteType.NoResponse
-  );
-
-  if (!status) {
+    return PartialFlashResult.Success;
+  } catch (e) {
+    device.error(e);
     return PartialFlashResult.Failed;
   }
-  delay(100); // allow time for write to complete
-  progress(FlashProgressStage.Partial, 100);
-
-  return PartialFlashResult.Success;
 };
 
 interface HexPos {
@@ -348,35 +294,6 @@ const hexGetData = (hex: HexUtils, pos: HexPos | null): string => {
     }
   }
   return data;
-};
-
-interface AddressRange {
-  start: number;
-  end: number;
-}
-
-const parseMakeCodeRegionCommandResponse = (
-  value: Uint8Array
-): AddressRange | null => {
-  let offset = 2; // Skip first 2 bytes
-  const dataView = new DataView(
-    value.buffer,
-    value.byteOffset,
-    value.byteLength
-  );
-  const start = dataView.getUint32(offset, false);
-  offset += 4;
-  const end = dataView.getUint32(offset, false);
-  if (start === 0 || start >= end) {
-    return null;
-  }
-
-  return { start, end };
-};
-
-const parseDalRegionCommandResponse = (value: Uint8Array): string => {
-  const hash = value.slice(10, 18);
-  return bytesToHex(hash);
 };
 
 const bytesToHex = (bytes: Uint8Array): string => {
