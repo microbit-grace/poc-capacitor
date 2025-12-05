@@ -98,25 +98,26 @@ const attemptPartialFlash = async (
     outer: for (let offset = fileCodeData.offset; offset < source.length; ) {
       for (let i = 0; i < 4; ++i) {
         const packetNumber = nextPacketNumber++;
+        const packetOffset = offset + i * 16;
         if (i < 3) {
-          await pf.writeFlash(source, offset, packetNumber);
+          await pf.writeFlash(source, packetOffset, packetNumber);
         } else {
           const result = await pf.writeFlashForNotification(
             source,
-            offset,
+            packetOffset,
             packetNumber
           );
           if (result === WriteFlashResult.Retransmit) {
             // Retry the whole 64 bytes.
             break outer;
           } else {
-            offset += 64;
             progress(
               FlashProgressStage.Partial,
               Math.round((offset / source.length) * 100)
             );
           }
         }
+        offset += 64;
       }
     }
 
@@ -144,7 +145,8 @@ const findMakeCodeDataBin = (data: Uint8Array): CodeDataBin | null => {
   if (offset < 0) {
     return null;
   }
-  const hash = bytesToHex(data.slice(offset + PXT_MAGIC_HEX.length / 2, 16));
+  const hashOffset = offset + PXT_MAGIC_HEX.length / 2;
+  const hash = bytesToHex(data.slice(hashOffset, hashOffset + 8));
   return { offset, hash };
 };
 
