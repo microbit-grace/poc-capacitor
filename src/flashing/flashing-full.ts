@@ -1,9 +1,14 @@
 import {
-  WriteType,
-  characteristicWriteNotificationWait,
-  cleanupCharacteristicNotifications,
-  disconnect,
-} from "./bluetooth";
+  BleClient,
+  BleDevice,
+  numbersToDataView,
+} from "@capacitor-community/bluetooth-le";
+import { delay } from "../utils";
+import {
+  MICROBIT_DFU_CHARACTERISTIC,
+  MICROBIT_DFU_SERVICE,
+  NORDIC_DFU_SERVICE,
+} from "./constants";
 import { createAppBin } from "./irmHexUtils";
 import {
   DeviceVersion,
@@ -13,17 +18,6 @@ import {
 } from "./model";
 import { flashDfu } from "./nordic-dfu";
 import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
-import { delay } from "../utils";
-import {
-  MICROBIT_DFU_CHARACTERISTIC,
-  MICROBIT_DFU_SERVICE,
-  NORDIC_DFU_SERVICE,
-} from "./constants";
-import {
-  BleClient,
-  BleDevice,
-  numbersToDataView,
-} from "@capacitor-community/bluetooth-le";
 
 /**
  * Perform a full flash via Nordic's DFU service.
@@ -41,16 +35,17 @@ export async function fullFlash(
 ): Promise<FlashResult> {
   console.log("Full flash");
   progress(FlashProgressStage.Full);
+  const { deviceId } = device;
 
   try {
     if (deviceVersion === DeviceVersion.V1) {
-      const rebooted = await requestRebootToBootloaderV1Only(device.deviceId);
+      const rebooted = await requestRebootToBootloaderV1Only(deviceId);
       if (!rebooted) {
         return FlashResult.FullFlashFailed;
       }
-      await disconnect(device.deviceId);
+      await BleClient.disconnect(deviceId);
       await delay(500);
-      await BleClient.connect(device.deviceId);
+      await BleClient.connect(deviceId);
 
       await refreshServicesForV1IfDesiredServiceMissing(
         device.deviceId,
@@ -59,7 +54,7 @@ export async function fullFlash(
     }
   } finally {
     // The service opens its own connection.
-    await disconnect(device.deviceId);
+    await BleClient.disconnect(deviceId);
   }
 
   const appBin = createAppBin(appHexData, deviceVersion);
@@ -116,20 +111,15 @@ function createInitPacketAppDatFile(appSize: number): Uint8Array {
 }
 
 async function requestRebootToBootloaderV1Only(deviceId: string) {
-  const { status } = await characteristicWriteNotificationWait(
-    deviceId,
-    MICROBIT_DFU_SERVICE,
-    MICROBIT_DFU_CHARACTERISTIC,
-    numbersToDataView([0x01]),
-    WriteType.Default
-  );
-  // TODO: correct to just log this?
-  console.log(`Request DFU result ${status}`);
-
-  await cleanupCharacteristicNotifications(
-    deviceId,
-    MICROBIT_DFU_SERVICE,
-    MICROBIT_DFU_CHARACTERISTIC
-  );
-  return true;
+  try {
+    await BleClient.write(
+      deviceId,
+      MICROBIT_DFU_SERVICE,
+      MICROBIT_DFU_CHARACTERISTIC,
+      numbersToDataView([0x01])
+    );
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 }

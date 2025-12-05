@@ -1,19 +1,12 @@
-import {
-  BleDevice,
-  numbersToDataView,
-} from "@capacitor-community/bluetooth-le";
-import {
-  characteristicWriteNotificationWait,
-  cleanupCharacteristicNotifications,
-  WriteType,
-} from "./bluetooth";
+import { numbersToDataView } from "@capacitor-community/bluetooth-le";
+import { delay } from "../utils";
+import { Device, WriteType } from "./bluetooth";
 import {
   PARTIAL_FLASH_CHARACTERISTIC,
   PARTIAL_FLASHING_SERVICE,
 } from "./constants";
 import HexUtils, { forByteArray, recordToByteArray } from "./hex-utils";
 import { DeviceVersion, FlashProgressStage, Progress } from "./model";
-import { delay } from "../utils";
 
 export enum PartialFlashResult {
   Success = "Success",
@@ -31,11 +24,16 @@ const PACKET_STATE_WAITING = 0;
 const PACKET_STATE_RETRANSMIT = 0xaa;
 
 const partialFlash = async (
-  device: BleDevice,
+  device: Device,
   appHexData: Uint8Array,
   deviceVersion: DeviceVersion,
   progress: Progress
 ): Promise<PartialFlashResult> => {
+  await device.startNotifications(
+    PARTIAL_FLASHING_SERVICE,
+    PARTIAL_FLASH_CHARACTERISTIC
+  );
+
   const result = await attemptPartialFlash(
     device,
     appHexData,
@@ -43,24 +41,22 @@ const partialFlash = async (
     progress
   );
 
-  const { deviceId } = device;
-  await cleanupCharacteristicNotifications(
-    deviceId,
+  await device.stopNotifications(
     PARTIAL_FLASHING_SERVICE,
     PARTIAL_FLASH_CHARACTERISTIC
   );
+
   return result;
 };
 
 const attemptPartialFlash = async (
-  device: BleDevice,
+  device: Device,
   appHexData: Uint8Array,
   deviceVersion: DeviceVersion,
   progress: Progress
 ): Promise<PartialFlashResult> => {
-  console.log("partial flash");
+  console.log("Partial flash");
   progress(FlashProgressStage.Partial);
-  const { deviceId } = device;
   const hex = forByteArray(appHexData);
   let python = false; // Not seem to be used.
   let codeData = findMakeCodeData(hex);
@@ -77,12 +73,12 @@ const attemptPartialFlash = async (
 
   const { pos: dataPos, hash: fileHash } = codeData;
   console.log(
-    `Found${python ? " python " : " "}partial flash data at ${
+    `Found ${python ? "Python " : "MakeCode"} partial flash data at ${
       dataPos.line
     } at offset ${dataPos.part}`
   );
-  const deviceCodeResult = await characteristicWriteNotificationWait(
-    deviceId,
+
+  const deviceCodeResult = await device.writeForNotification(
     PARTIAL_FLASHING_SERVICE,
     PARTIAL_FLASH_CHARACTERISTIC,
     numbersToDataView([REGION_INFO_COMMAND, REGION_MAKECODE]),
@@ -99,8 +95,7 @@ const attemptPartialFlash = async (
     return PartialFlashResult.AttemptFullFlash;
   }
 
-  const deviceHashResult = await characteristicWriteNotificationWait(
-    deviceId,
+  const deviceHashResult = await device.writeForNotification(
     PARTIAL_FLASHING_SERVICE,
     PARTIAL_FLASH_CHARACTERISTIC,
     numbersToDataView([REGION_INFO_COMMAND, REGION_DAL]),
@@ -142,7 +137,6 @@ const attemptPartialFlash = async (
 
   // Ready to flash!
   // Loop through data
-  console.log("enter flashing loop");
   let addr0 = addr + part / 2; // two hex digits per byte
   let addr0Lo = addr0 % (256 * 256);
   let addr0Hi = addr0 / (256 * 256);
@@ -154,12 +148,7 @@ const attemptPartialFlash = async (
   // TODO - check size of code in file matches micro:bit
   let endOfFile = false;
   while (true) {
-    // Timeout if total is > 30 seconds
-    //if (SystemClock.elapsedRealtime() - startTime > 60000) {
-    //    log.i("Partial flashing has timed out")
-    //    return PartialFlashResult.AttemptFullFlash
-    // }
-    // Check if EOF
+    // TODO: Timeout if total is > 30 seconds
     if (
       endOfFile ||
       hex.getRecordTypeFromIndex(dataPos.line + lineCount) != 0
@@ -195,7 +184,7 @@ const attemptPartialFlash = async (
     } else if (writeCounter === 1) {
       offsetToSend = addr0Hi;
     }
-    console.log(
+    console.debug(
       `${packetNum} ${writeCounter} addr0 ${addr0} offsetToSend ${offsetToSend} line ${lineCount} addr ${addr} part ${part} data ${partData} endOfFile ${endOfFile}`
     );
     const chunk = recordToByteArray(partData, offsetToSend, packetNum);
@@ -204,8 +193,7 @@ const attemptPartialFlash = async (
     writeCounter++;
     let packetState = -1;
     if (writeCounter === 4) {
-      const result = await characteristicWriteNotificationWait(
-        deviceId,
+      const result = await device.writeForNotification(
         PARTIAL_FLASHING_SERVICE,
         PARTIAL_FLASH_CHARACTERISTIC,
         chunk,
@@ -220,8 +208,7 @@ const attemptPartialFlash = async (
       packetState = result.value[1];
       writeCounter = 0;
     } else {
-      const result = await characteristicWriteNotificationWait(
-        deviceId,
+      const result = await device.writeForNotification(
         PARTIAL_FLASHING_SERVICE,
         PARTIAL_FLASH_CHARACTERISTIC,
         chunk,
@@ -257,8 +244,7 @@ const attemptPartialFlash = async (
   delay(100); // allow time for write to complete
 
   const endOfFlashPacket = numbersToDataView([0x02]);
-  const { status } = await characteristicWriteNotificationWait(
-    deviceId,
+  const { status } = await device.writeForNotification(
     PARTIAL_FLASHING_SERVICE,
     PARTIAL_FLASH_CHARACTERISTIC,
     endOfFlashPacket,
@@ -271,11 +257,6 @@ const attemptPartialFlash = async (
   delay(100); // allow time for write to complete
   progress(FlashProgressStage.Partial, 100);
 
-  // Time execution
-  //val endTime = SystemClock.elapsedRealtime()
-  //val elapsedMilliSeconds = endTime - startTime
-  //val elapsedSeconds = elapsedMilliSeconds / 1000.0
-  //log.i("Flash Time: " + elapsedSeconds.toFloat() + " seconds")
   return PartialFlashResult.Success;
 };
 
@@ -386,8 +367,6 @@ const parseMakeCodeRegionCommandResponse = (
   const start = dataView.getUint32(offset, false);
   offset += 4;
   const end = dataView.getUint32(offset, false);
-  console.log(start);
-  console.log(end);
   if (start === 0 || start >= end) {
     return null;
   }

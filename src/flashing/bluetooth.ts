@@ -1,6 +1,16 @@
-import { BleClient, BleDevice } from "@capacitor-community/bluetooth-le";
+import {
+  BleClient,
+  BleDevice,
+  numbersToDataView,
+  TimeoutOptions,
+} from "@capacitor-community/bluetooth-le";
 import { Capacitor } from "@capacitor/core";
-import BluetoothNotificationManager from "./bluetooth-notifications";
+import {
+  MICROBIT_RESET_COMMAND,
+  PARTIAL_FLASHING_SERVICE,
+  PARTIAL_FLASH_CHARACTERISTIC,
+} from "./constants";
+import { delay } from "../utils";
 
 export enum BluetoothInitializationResult {
   MissingPermissions = "MissingPermissions",
@@ -18,11 +28,11 @@ export type BluetoothResult = {
   value: Uint8Array | null;
 };
 
-export const bondingTimeoutInMs = 10_000;
+export const bondingTimeoutInMs = 40_000;
 export const connectTimeoutInMs = 10_000;
 
 const isAndroid = () => Capacitor.getPlatform() === "android";
-const notificationManager = new BluetoothNotificationManager();
+
 /**
  * Initializes BLE.
  */
@@ -87,27 +97,244 @@ export async function findMatchingDevice(
   return await scanPromise;
 }
 
+export class Device {
+  private tag: string | undefined;
+  private disconnectTracker:
+    | { promise: Promise<void>; onDisconnect: () => void }
+    | undefined;
+  private notificationListeners = new Map<
+    string,
+    Set<(data: Uint8Array) => void>
+  >();
+
+  constructor(public deviceId: string) {}
+
+  async connect(tag: string) {
+    this.tag = tag;
+    let onDisconnect: (() => void) | undefined;
+    const promise = new Promise<void>((resolve) => {
+      onDisconnect = () => {
+        this.log("Disconnected");
+        this.notificationListeners = new Map();
+        resolve();
+      };
+    });
+    this.disconnectTracker = { promise, onDisconnect: onDisconnect! };
+    this.log("Connecting");
+    await BleClient.connect(this.deviceId, onDisconnect, {
+      timeout: connectTimeoutInMs,
+    });
+    this.log("Connected");
+  }
+
+  async startNotifications(
+    serviceId: string,
+    characteristicId: string,
+    options?: TimeoutOptions
+  ): Promise<void> {
+    const key = this.getNotificationKey(serviceId, characteristicId);
+    await BleClient.startNotifications(
+      this.deviceId,
+      serviceId,
+      characteristicId,
+      (value: DataView) => {
+        const bytes = new Uint8Array(value.buffer);
+        // Notify all registered callbacks.
+        this.notificationListeners.get(key)?.forEach((cb) => cb(bytes));
+      },
+      options
+    );
+  }
+
+  private subscribe(
+    serviceId: string,
+    characteristicId: string,
+    callback: (data: Uint8Array) => void
+  ): void {
+    const key = this.getNotificationKey(serviceId, characteristicId);
+    if (!this.notificationListeners.has(key)) {
+      this.notificationListeners.set(key, new Set());
+    }
+    this.notificationListeners.get(key)!.add(callback);
+  }
+
+  private unsubscribe(
+    serviceId: string,
+    characteristicId: string,
+    callback: (data: Uint8Array) => void
+  ): void {
+    const key = this.getNotificationKey(serviceId, characteristicId);
+    this.notificationListeners.get(key)?.delete(callback);
+  }
+
+  async stopNotifications(
+    serviceId: string,
+    characteristicId: string
+  ): Promise<void> {
+    await BleClient.stopNotifications(
+      this.deviceId,
+      serviceId,
+      characteristicId
+    );
+    const key = this.getNotificationKey(serviceId, characteristicId);
+    this.notificationListeners.delete(key);
+  }
+
+  /**
+   * Write to characteristic and wait for a notification response.
+   *
+   * It is the responsibility of the caller to have started notifications
+   * for the characteristic.
+   */
+  async writeForNotification(
+    serviceId: string,
+    characteristicId: string,
+    value: DataView,
+    writeType: WriteType,
+    notificationId: number | null = null,
+    isFinalNotification: (p: Uint8Array) => boolean = () => true
+  ): Promise<BluetoothResult> {
+    let notificationPromise: Promise<Uint8Array> | null = null;
+    let notificationResolve: ((data: Uint8Array) => void) | null = null;
+    let notificationListener: ((data: Uint8Array) => void) | null = null;
+
+    if (notificationId !== null) {
+      notificationListener = (bytes: Uint8Array) => {
+        if (bytes[0] === notificationId && isFinalNotification(bytes)) {
+          notificationResolve?.(bytes);
+        }
+      };
+      this.subscribe(serviceId, characteristicId, notificationListener);
+      notificationPromise = new Promise<Uint8Array>((resolve) => {
+        notificationResolve = resolve;
+      });
+    }
+
+    try {
+      if (writeType === WriteType.Default) {
+        await BleClient.write(
+          this.deviceId,
+          serviceId,
+          characteristicId,
+          value
+        );
+      } else {
+        await BleClient.writeWithoutResponse(
+          this.deviceId,
+          serviceId,
+          characteristicId,
+          value
+        );
+      }
+
+      // Wait for notification if expected
+      const notificationValue = notificationPromise
+        ? await notificationPromise
+        : null;
+      return { status: true, value: notificationValue };
+    } catch (error) {
+      console.error("Write failed:", error);
+      return { status: false, value: null };
+    } finally {
+      if (notificationId !== null && notificationListener) {
+        this.unsubscribe(serviceId, characteristicId, notificationListener);
+      }
+    }
+  }
+
+  async waitForDisconnect(timeout: number): Promise<void> {
+    if (!this.disconnectTracker) {
+      this.log("Waiting for disconnect but not connected");
+      return;
+    }
+    this.log(`Waiting for disconnect (timeout ${timeout})`);
+    const result = await Promise.race([
+      this.disconnectTracker.promise,
+      new Promise((resolve) => setTimeout(() => resolve("timeout"), timeout)),
+    ]);
+    if (result === "timeout") {
+      this.log("Timeout waiting for disconnect");
+      throw new Error("Timeout waiting for disconnect");
+    }
+  }
+
+  log(message: string) {
+    console.log(`[${this.tag}] ${message}`);
+  }
+
+  private getNotificationKey(
+    serviceId: string,
+    characteristicId: string
+  ): string {
+    return `${serviceId}:${characteristicId}`;
+  }
+}
+
 /**
- * Bonds with device.
+ * Bonds with device and handles the post-bond device state only returning
+ * when we can reattempt a connection with the device.
  *
  * @returns true if successful or false if unsuccessful.
  */
-export async function bondDevice(device: BleDevice): Promise<boolean> {
-  if (!isAndroid()) {
-    // Handled by the OS.
-    return true;
-  }
+export async function connectHandlingBond(device: Device): Promise<boolean> {
+  const startTime = Date.now();
   try {
-    const deviceId = device.deviceId;
-    const isAlreadyBonded = await BleClient.isBonded(deviceId);
-    if (isAlreadyBonded) {
-      return true;
+    const maybeJustBonded = await bondConnectDeviceInternal(device);
+    if (maybeJustBonded) {
+      // If we did just bond then the device disconnects after 2_000 and then
+      // resets after a further 13_000 In future we'd like a firmware change
+      // that means it doesn't reset when partial flashing is in progress.
+      device.log(isAndroid() ? "New bond" : "Potential new bond");
+      try {
+        await device.waitForDisconnect(3000);
+      } catch (e) {
+        if (!isAndroid()) {
+          device.log("No disconnect after bond, assuming connection is stable");
+          return true;
+        }
+        throw e;
+      }
+
+      await device.connect("post-bond pre-reset");
+      // TODO: check this is needed, potentially inline into connect if always needed
+      await delay(500);
+      device.log("Resetting to pairing mode");
+      await resetToMode(device.deviceId, MicroBitMode.Pairing);
+      await device.waitForDisconnect(10_000);
+      await device.connect("post-bond-dance");
+      device.log(`Connection ready; took ${Date.now() - startTime}`);
     }
-    await BleClient.createBond(deviceId, { timeout: bondingTimeoutInMs });
     return true;
-  } catch (error) {
-    console.error(error);
+  } catch (e) {
+    console.error(e);
     return false;
+  }
+}
+
+async function bondConnectDeviceInternal(device: Device): Promise<boolean> {
+  const { deviceId } = device;
+  if (isAndroid()) {
+    let justBonded = false;
+    // This gets us a nicer pairing dialog than just going straight for the characteristic.
+    if (!(await BleClient.isBonded(deviceId))) {
+      await BleClient.createBond(deviceId, { timeout: bondingTimeoutInMs });
+      justBonded = true;
+    }
+    await device.connect("initial");
+    return justBonded;
+  } else {
+    // Long timeout as this is the point that the pairing dialog will show.
+    // If this responds very quickly maybe we could assume there was a bond?
+    // At the moment we always do the disconnect dance so subsequent code will
+    // need to call startNotifications again. We need to be connected to
+    // startNotifications.
+    await device.connect("initial");
+    await device.startNotifications(
+      PARTIAL_FLASHING_SERVICE,
+      PARTIAL_FLASH_CHARACTERISTIC,
+      { timeout: bondingTimeoutInMs }
+    );
+    return true;
   }
 }
 
@@ -124,76 +351,19 @@ export async function checkBondState(device: BleDevice): Promise<boolean> {
   return BleClient.isBonded(device.deviceId);
 }
 
-/**
- * Write to characteristic and wait for notification response.
- */
-export async function characteristicWriteNotificationWait(
-  deviceId: string,
-  serviceId: string,
-  characteristicId: string,
-  value: DataView,
-  writeType: WriteType,
-  notificationId: number | null = null,
-  isFinalNotification: (p: Uint8Array) => boolean = () => true
-): Promise<BluetoothResult> {
-  let notificationPromise: Promise<Uint8Array> | null = null;
-  let notificationListener: ((data: Uint8Array) => void) | null = null;
-
-  if (notificationId !== null) {
-    notificationPromise = new Promise<Uint8Array>((resolve, reject) => {
-      notificationListener = (bytes: Uint8Array) => {
-        if (bytes[0] === notificationId && isFinalNotification(bytes)) {
-          resolve(bytes);
-        }
-      };
-
-      notificationManager
-        .subscribe(deviceId, serviceId, characteristicId, notificationListener)
-        .catch(reject);
-    });
-  }
-
-  try {
-    if (writeType === WriteType.Default) {
-      await BleClient.write(deviceId, serviceId, characteristicId, value);
-    } else {
-      await BleClient.writeWithoutResponse(
-        deviceId,
-        serviceId,
-        characteristicId,
-        value
-      );
-    }
-
-    // Wait for notification if expected
-    const notificationValue = notificationPromise
-      ? await notificationPromise
-      : null;
-    return { status: true, value: notificationValue };
-  } catch (error) {
-    console.error("Write or notification failed:", error);
-    return { status: false, value: null };
-  } finally {
-    if (notificationId !== null && notificationListener) {
-      notificationManager.unsubscribe(
-        deviceId,
-        serviceId,
-        characteristicId,
-        notificationListener
-      );
-    }
-  }
+export enum MicroBitMode {
+  Pairing = 0x00,
+  Application = 0x01,
 }
 
-export async function cleanupCharacteristicNotifications(
+export async function resetToMode(
   deviceId: string,
-  serviceId: string,
-  characteristicId: string
+  mode: MicroBitMode
 ): Promise<void> {
-  await notificationManager.cleanup(deviceId, serviceId, characteristicId);
-}
-
-export async function disconnect(deviceId: string): Promise<void> {
-  await notificationManager.cleanupAll();
-  await BleClient.disconnect(deviceId);
+  await BleClient.writeWithoutResponse(
+    deviceId,
+    PARTIAL_FLASHING_SERVICE,
+    PARTIAL_FLASH_CHARACTERISTIC,
+    numbersToDataView([MICROBIT_RESET_COMMAND, mode])
+  );
 }
