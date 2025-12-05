@@ -1,16 +1,18 @@
 import {
   BleClient,
   BleDevice,
-  numbersToDataView,
   TimeoutOptions,
 } from "@capacitor-community/bluetooth-le";
 import { Capacitor } from "@capacitor/core";
 import {
-  MICROBIT_RESET_COMMAND,
   PARTIAL_FLASHING_SERVICE,
   PARTIAL_FLASH_CHARACTERISTIC,
 } from "./constants";
 import { delay } from "../utils";
+import {
+  MicroBitMode,
+  PartialFlashingService,
+} from "./partial-flashing-service";
 
 export enum BluetoothInitializationResult {
   MissingPermissions = "MissingPermissions",
@@ -22,11 +24,6 @@ export enum WriteType {
   NoResponse = "NoResponse",
   Default = "Default",
 }
-
-export type BluetoothResult = {
-  status: boolean;
-  value: Uint8Array | null;
-};
 
 export const bondingTimeoutInMs = 40_000;
 export const connectTimeoutInMs = 10_000;
@@ -191,24 +188,18 @@ export class Device {
     characteristicId: string,
     value: DataView,
     writeType: WriteType,
-    notificationId: number | null = null,
+    notificationId: number,
     isFinalNotification: (p: Uint8Array) => boolean = () => true
-  ): Promise<BluetoothResult> {
-    let notificationPromise: Promise<Uint8Array> | null = null;
-    let notificationResolve: ((data: Uint8Array) => void) | null = null;
-    let notificationListener: ((data: Uint8Array) => void) | null = null;
-
-    if (notificationId !== null) {
+  ): Promise<Uint8Array> {
+    let notificationListener: ((bytes: Uint8Array) => void) | undefined;
+    const notificationPromise = new Promise<Uint8Array>((resolve) => {
       notificationListener = (bytes: Uint8Array) => {
         if (bytes[0] === notificationId && isFinalNotification(bytes)) {
-          notificationResolve?.(bytes);
+          resolve(bytes);
         }
       };
       this.subscribe(serviceId, characteristicId, notificationListener);
-      notificationPromise = new Promise<Uint8Array>((resolve) => {
-        notificationResolve = resolve;
-      });
-    }
+    });
 
     try {
       if (writeType === WriteType.Default) {
@@ -226,17 +217,9 @@ export class Device {
           value
         );
       }
-
-      // Wait for notification if expected
-      const notificationValue = notificationPromise
-        ? await notificationPromise
-        : null;
-      return { status: true, value: notificationValue };
-    } catch (error) {
-      console.error("Write failed:", error);
-      return { status: false, value: null };
+      return await notificationPromise;
     } finally {
-      if (notificationId !== null && notificationListener) {
+      if (notificationListener) {
         this.unsubscribe(serviceId, characteristicId, notificationListener);
       }
     }
@@ -260,6 +243,10 @@ export class Device {
 
   log(message: string) {
     console.log(`[${this.tag}] ${message}`);
+  }
+
+  error(e: unknown) {
+    console.error(e);
   }
 
   private getNotificationKey(
@@ -299,7 +286,8 @@ export async function connectHandlingBond(device: Device): Promise<boolean> {
       // TODO: check this is needed, potentially inline into connect if always needed
       await delay(500);
       device.log("Resetting to pairing mode");
-      await resetToMode(device.deviceId, MicroBitMode.Pairing);
+      const pf = new PartialFlashingService(device);
+      await pf.resetToMode(MicroBitMode.Pairing);
       await device.waitForDisconnect(10_000);
       await device.connect("post-bond-dance");
       device.log(`Connection ready; took ${Date.now() - startTime}`);
@@ -349,21 +337,4 @@ export async function checkBondState(device: BleDevice): Promise<boolean> {
     return true;
   }
   return BleClient.isBonded(device.deviceId);
-}
-
-export enum MicroBitMode {
-  Pairing = 0x00,
-  Application = 0x01,
-}
-
-export async function resetToMode(
-  deviceId: string,
-  mode: MicroBitMode
-): Promise<void> {
-  await BleClient.writeWithoutResponse(
-    deviceId,
-    PARTIAL_FLASHING_SERVICE,
-    PARTIAL_FLASH_CHARACTERISTIC,
-    numbersToDataView([MICROBIT_RESET_COMMAND, mode])
-  );
 }
