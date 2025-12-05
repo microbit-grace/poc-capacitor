@@ -6,7 +6,6 @@ import {
   FlashResult,
   Progress,
 } from "./model";
-import { SizedHexData } from "./irmHexUtils";
 import { Directory, Filesystem, WriteFileOptions } from "@capacitor/filesystem";
 import JSZip from "jszip";
 import { Capacitor, PluginListenerHandle } from "@capacitor/core";
@@ -37,20 +36,17 @@ async function writeCacheFile(options: Omit<WriteFileOptions, "directory">) {
   return uri;
 }
 
-async function createAppBinFile(appBin: SizedHexData): Promise<string> {
+async function createAppBinFile(appBin: Uint8Array): Promise<string> {
   return await writeCacheFile({
     path: "dfu-app-bin.bin",
-    data: uint8ArrayToBase64(appBin.data),
+    data: uint8ArrayToBase64(appBin),
   });
 }
 
-async function createDfuZipFile(
-  appBin: SizedHexData,
-  initPacket: Uint8Array
-): Promise<string> {
+async function createDfuZipFile(appBin: Uint8Array): Promise<string> {
   const zip = new JSZip();
-  zip.file(appDatFilename, initPacket);
-  zip.file(appBinFilename, appBin.data);
+  zip.file(appDatFilename, createInitPacket(appBin.length));
+  zip.file(appBinFilename, appBin);
   zip.file("manifest.json", manifestData);
 
   const zipDataAsUint8Array = await zip.generateAsync({
@@ -67,14 +63,13 @@ async function createDfuZipFile(
 
 async function getFilePath(
   deviceVersion: DeviceVersion,
-  appBin: SizedHexData,
-  initPacket: Uint8Array
+  appBin: Uint8Array
 ): Promise<{ uri: string; filename: string }> {
   if (deviceVersion === DeviceVersion.V1) {
     const uri = await createAppBinFile(appBin);
     return { uri, filename: "dfu-app-bin.bin" };
   }
-  const uri = await createDfuZipFile(appBin, initPacket);
+  const uri = await createDfuZipFile(appBin);
   return { uri, filename: "dfu.zip" };
 }
 
@@ -93,15 +88,10 @@ async function cleanupTemporaryFile(filename: string): Promise<void> {
 export async function flashDfu(
   device: BleDevice,
   deviceVersion: DeviceVersion,
-  appBin: SizedHexData,
-  initPacket: Uint8Array,
+  appBin: Uint8Array,
   progress: Progress
 ): Promise<FlashResult> {
-  const { uri: filePath, filename } = await getFilePath(
-    deviceVersion,
-    appBin,
-    initPacket
-  );
+  const { uri: filePath, filename } = await getFilePath(deviceVersion, appBin);
   let listener: PluginListenerHandle | undefined;
   try {
     // eslint-disable-next-line no-async-promise-executor
@@ -165,3 +155,46 @@ export async function flashDfu(
     await cleanupTemporaryFile(filename);
   }
 }
+
+const createInitPacket = (appSize: number): Uint8Array => {
+  //typedef struct {
+  //    uint8_t  magic[12];                 // identify this struct "microbit_app"
+  //    uint32_t version;                   // version of this struct == 1
+  //    uint32_t app_size;                  // only used for DFU_FW_TYPE_APPLICATION
+  //    uint32_t hash_size;                 // 32 => DFU_HASH_TYPE_SHA256 or zero to bypass hash check
+  //    uint8_t  hash_bytes[32];            // hash of whole DFU download
+  //} microbit_dfu_app_t;
+  const magic = "microbit_app";
+  const version = 1;
+  const hashSize = 0;
+  const hash = new Uint8Array(32).fill(0);
+
+  const buffer = new ArrayBuffer(12 + 4 + 4 + 4 + 32); // total: 56 bytes
+  const view = new DataView(buffer);
+  const uint8View = new Uint8Array(buffer);
+
+  let offset = 0;
+
+  // Write magic string (12 bytes)
+  const encoder = new TextEncoder();
+  const magicBytes = encoder.encode(magic);
+  uint8View.set(magicBytes, offset);
+  offset += 12;
+
+  // Write version (4 bytes, little-endian)
+  view.setUint32(offset, version, true);
+  offset += 4;
+
+  // Write appSize (4 bytes, little-endian)
+  view.setUint32(offset, appSize, true);
+  offset += 4;
+
+  // Write hashSize (4 bytes, little-endian)
+  view.setUint32(offset, hashSize, true);
+  offset += 4;
+
+  // Write hash (32 bytes)
+  uint8View.set(hash, offset);
+
+  return uint8View;
+};

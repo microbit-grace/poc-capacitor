@@ -2,36 +2,37 @@ import {
   BleClient,
   numbersToDataView,
 } from "@capacitor-community/bluetooth-le";
+import MemoryMap from "nrf-intel-hex";
+import { Device, WriteType } from "./bluetooth";
 import {
   MICROBIT_RESET_COMMAND,
   PARTIAL_FLASH_CHARACTERISTIC,
   PARTIAL_FLASHING_SERVICE,
 } from "./constants";
-import { Device, WriteType } from "./bluetooth";
 
 const REGION_INFO_COMMAND = 0x0;
-const REGION_MAKECODE = 2;
-const REGION_DAL = 1;
 const FLASH_COMMAND = 0x1;
 
-export const enum PacketState {
-  Waiting = 0x00,
-  Retransmit = 0xaa,
-}
-
-export const enum WriteFlashResult {
-  Success,
-  Retransmit,
-}
-
-export enum MicroBitMode {
+export const enum MicroBitMode {
   Pairing = 0x00,
   Application = 0x01,
 }
 
-export interface AddressRange {
+export const enum RegionId {
+  SoftDevice = 0x0,
+  Dal = 0x1,
+  MakeCode = 0x2,
+}
+
+export interface RegionInfo {
   start: number;
   end: number;
+  hash: string;
+}
+
+export const enum PacketState {
+  Retransmit = 0xaa,
+  Success = 0xff,
 }
 
 export class PartialFlashingService {
@@ -46,29 +47,40 @@ export class PartialFlashingService {
     );
   }
 
-  async getMakeCodeRegion(): Promise<AddressRange | null> {
-    return parseMakeCodeRegionCommandResponse(
-      await this.getRegionInfo(REGION_MAKECODE)
+  async getRegionInfo(region: RegionId): Promise<RegionInfo | null> {
+    return parseRegionResponse(
+      await this.device.writeForNotification(
+        PARTIAL_FLASHING_SERVICE,
+        PARTIAL_FLASH_CHARACTERISTIC,
+        numbersToDataView([REGION_INFO_COMMAND, region]),
+        WriteType.NoResponse,
+        REGION_INFO_COMMAND
+      )
     );
-  }
-
-  async getDALRegionHash(): Promise<string | null> {
-    return parseDalRegionCommandResponse(await this.getRegionInfo(REGION_DAL));
   }
 
   /**
    * Writes a flash chunk.
    * Use writeFlashForNotification for every 4th chunk.
-   *
-   * @param chunk
-   * @returns
    */
-  async writeFlash(chunk: DataView) {
+  async writeFlash(
+    source: MemoryMap,
+    batchAddress: number,
+    dataOffset: number,
+    packetNumber: number,
+    packetInBatch: number
+  ) {
     return await BleClient.writeWithoutResponse(
       this.device.deviceId,
       PARTIAL_FLASHING_SERVICE,
       PARTIAL_FLASH_CHARACTERISTIC,
-      chunk
+      this.createWriteDataCommand(
+        source,
+        batchAddress,
+        dataOffset,
+        packetNumber,
+        packetInBatch
+      )
     );
   }
 
@@ -76,61 +88,88 @@ export class PartialFlashingService {
    * Write a chunk and wait for a success/retransmit response.
    * The micro:bit notifies on every 4th chunk.
    */
-  async writeFlashForNotification(chunk: DataView): Promise<WriteFlashResult> {
+  async writeFlashForNotification(
+    source: MemoryMap,
+    batchAddress: number,
+    dataOffset: number,
+    packetNumber: number,
+    packetInBatch: number
+  ): Promise<PacketState> {
     const result = await this.device.writeForNotification(
       PARTIAL_FLASHING_SERVICE,
       PARTIAL_FLASH_CHARACTERISTIC,
-      chunk,
+      this.createWriteDataCommand(
+        source,
+        batchAddress,
+        dataOffset,
+        packetNumber,
+        packetInBatch
+      ),
       WriteType.NoResponse,
       FLASH_COMMAND,
       (notificationValue: Uint8Array) =>
-        notificationValue[1] !== PacketState.Waiting
+        notificationValue[1] === PacketState.Success ||
+        notificationValue[1] === PacketState.Retransmit
     );
-    const packetState = result[1];
-    return packetState === PacketState.Retransmit
-      ? WriteFlashResult.Retransmit
-      : WriteFlashResult.Success;
+    return result[1];
   }
 
   async writeEndOfFlashPacket() {
-    this.writeFlash(numbersToDataView([0x02]));
-  }
-
-  private async getRegionInfo(
-    region: typeof REGION_MAKECODE | typeof REGION_DAL
-  ) {
-    return await this.device.writeForNotification(
+    return await BleClient.writeWithoutResponse(
+      this.device.deviceId,
       PARTIAL_FLASHING_SERVICE,
       PARTIAL_FLASH_CHARACTERISTIC,
-      numbersToDataView([REGION_INFO_COMMAND, region]),
-      WriteType.NoResponse,
-      REGION_INFO_COMMAND
+      numbersToDataView([0x02])
     );
+  }
+
+  private createWriteDataCommand(
+    source: MemoryMap,
+    batchAddress: number,
+    dataOffset: number,
+    packetNumber: number,
+    packetInBatch: number
+  ): DataView {
+    const data = new DataView(new ArrayBuffer(20));
+    data.setUint8(0, 0x01);
+
+    // Bytes 1-2: offset encoding
+    // Packet 0: low 16 bits of flash address
+    // Packet 1: high 16 bits of flash address
+    // Packets 2-3: offset within the 64-byte batch being written
+    let offsetValue: number;
+    if (packetInBatch === 0) {
+      offsetValue = batchAddress & 0xffff;
+    } else {
+      // Note: for packets 2 and 3 the offset is unused.
+      offsetValue = (batchAddress >> 16) & 0xffff;
+    }
+
+    data.setUint16(1, offsetValue);
+    data.setUint8(3, packetNumber);
+
+    const bytes = source.slicePad(dataOffset, 16);
+    for (let i = 0; i < 16; ++i) {
+      data.setUint8(4 + i, bytes[i]);
+    }
+
+    return data;
   }
 }
 
-const parseMakeCodeRegionCommandResponse = (
-  value: Uint8Array
-): AddressRange | null => {
-  let offset = 2; // Skip first 2 bytes
+const parseRegionResponse = (value: Uint8Array): RegionInfo | null => {
   const dataView = new DataView(
     value.buffer,
     value.byteOffset,
     value.byteLength
   );
-  const start = dataView.getUint32(offset, false);
-  offset += 4;
-  const end = dataView.getUint32(offset, false);
+  const start = dataView.getUint32(2, false);
+  const end = dataView.getUint32(6, false);
   if (start === 0 || start >= end) {
     return null;
   }
-
-  return { start, end };
-};
-
-const parseDalRegionCommandResponse = (value: Uint8Array): string => {
   const hash = value.slice(10, 18);
-  return bytesToHex(hash);
+  return { start, end, hash: bytesToHex(hash) };
 };
 
 const bytesToHex = (bytes: Uint8Array): string => {

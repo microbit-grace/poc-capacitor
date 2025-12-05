@@ -13,13 +13,17 @@ import {
 } from "./constants";
 import { fullFlash } from "./flashing-full";
 import partialFlash, { PartialFlashResult } from "./flashing-partial";
-import { createHexFileFromUniversal, hexStrToByte } from "./irmHexUtils";
 import {
   DeviceVersion,
   FlashProgressStage,
   FlashResult,
   Progress,
 } from "./model";
+import {
+  isUniversalHex,
+  microbitBoardId,
+  separateUniversalHex,
+} from "@microbit/microbit-universal-hex";
 
 /**
  * High-level flashing flow.
@@ -29,8 +33,6 @@ export async function flash(
   hexStr: string,
   progress: Progress
 ) {
-  const hex = hexStrToByte(hexStr);
-
   progress(FlashProgressStage.Initialize);
   const initialiseResult = await initializeBluetooth();
   switch (initialiseResult) {
@@ -51,12 +53,12 @@ export async function flash(
     return FlashResult.DeviceNotFound;
   }
 
-  return flashDevice(device, hex, progress);
+  return flashDevice(device, hexStr, progress);
 }
 
 async function flashDevice(
   bleDevice: BleDevice,
-  inputHex: Uint8Array,
+  hexStr: string,
   progress: Progress
 ): Promise<FlashResult> {
   progress(FlashProgressStage.Connecting);
@@ -83,17 +85,12 @@ async function flashDevice(
     const deviceVersion = await getDeviceVersion(deviceId);
     console.log(`Detected device version as ${deviceVersion}`);
 
-    const appHex = createHexFileFromUniversal(inputHex, deviceVersion);
-    if (!appHex?.data) {
+    const appHex = createHexFileFromUniversal(hexStr, deviceVersion);
+    if (!appHex) {
       return FlashResult.InvalidHex;
     }
 
-    const partialFlashResult = await partialFlash(
-      device,
-      appHex.data,
-      deviceVersion,
-      progress
-    );
+    const partialFlashResult = await partialFlash(device, appHex, progress);
 
     switch (partialFlashResult) {
       case PartialFlashResult.Success: {
@@ -111,7 +108,7 @@ async function flashDevice(
       case PartialFlashResult.AttemptFullFlash: {
         // We can also end up here because of cancellation of pairing.
         // Can we detect this nicely?
-        return fullFlash(bleDevice, deviceVersion, appHex.data, progress);
+        return fullFlash(bleDevice, deviceVersion, appHex, progress);
       }
       default: {
         return FlashResult.Cancelled;
@@ -140,3 +137,27 @@ async function getDeviceVersion(deviceId: string): Promise<DeviceVersion> {
   }
   return DeviceVersion.V1;
 }
+
+export const createHexFileFromUniversal = (
+  hexStr: string,
+  deviceVersion: DeviceVersion
+): string | null => {
+  try {
+    if (isUniversalHex(hexStr)) {
+      const parts = separateUniversalHex(hexStr);
+      const boardId =
+        deviceVersion === DeviceVersion.V1
+          ? microbitBoardId.V1
+          : microbitBoardId.V2;
+      const separate = parts.find((p) => p.boardId === boardId);
+      if (!separate) {
+        return null;
+      }
+      return separate.hex;
+    }
+    return hexStr;
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+};
