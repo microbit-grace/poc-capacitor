@@ -27,6 +27,7 @@ export enum WriteType {
 
 export const bondingTimeoutInMs = 40_000;
 export const connectTimeoutInMs = 10_000;
+const scanningTimeoutInMs = 10_000;
 
 const isAndroid = () => Capacitor.getPlatform() === "android";
 
@@ -82,7 +83,7 @@ export async function findMatchingDevice(
     return bonded;
   }
 
-  // TODO: Scan needs timing out.
+  console.log(`Scanning for device - ${namePrefix}`);
   const scanPromise: Promise<BleDevice> = new Promise(
     (res) =>
       // This only resolves when we stop the scan.
@@ -91,7 +92,14 @@ export async function findMatchingDevice(
         res(result.device);
       })
   );
-  return await scanPromise;
+  const scanTimeoutPromise: Promise<undefined> = new Promise((resolve) =>
+    setTimeout(async () => {
+      await BleClient.stopLEScan();
+      console.log("Timeout scanning for device");
+      resolve(undefined);
+    }, scanningTimeoutInMs)
+  );
+  return await Promise.race([scanPromise, scanTimeoutPromise]);
 }
 
 export class Device {
