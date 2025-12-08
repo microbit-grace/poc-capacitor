@@ -3,13 +3,14 @@ import {
   BleDevice,
   numbersToDataView,
 } from "@capacitor-community/bluetooth-le";
+import MemoryMap from "nrf-intel-hex";
 import { delay } from "../utils";
 import {
   MICROBIT_DFU_CHARACTERISTIC,
   MICROBIT_DFU_SERVICE,
   NORDIC_DFU_SERVICE,
 } from "./constants";
-import { createAppBin } from "./irmHexUtils";
+import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
 import {
   DeviceVersion,
   FlashProgressStage,
@@ -17,7 +18,6 @@ import {
   Progress,
 } from "./model";
 import { flashDfu } from "./nordic-dfu";
-import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
 
 /**
  * Perform a full flash via Nordic's DFU service.
@@ -30,7 +30,7 @@ import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
 export async function fullFlash(
   device: BleDevice,
   deviceVersion: DeviceVersion,
-  appHexData: Uint8Array,
+  appHex: string,
   progress: Progress
 ): Promise<FlashResult> {
   console.log("Full flash");
@@ -57,57 +57,13 @@ export async function fullFlash(
     await BleClient.disconnect(deviceId);
   }
 
-  const appBin = createAppBin(appHexData, deviceVersion);
+  const appBin = createAppBin(appHex, deviceVersion);
   if (appBin === null) {
     console.log("Invalid hex (app bin case)");
     return FlashResult.InvalidHex;
   }
-  console.log("Extracted app bin");
-  const initPacket = createInitPacketAppDatFile(appBin.size);
-  return flashDfu(device, deviceVersion, appBin, initPacket, progress);
-}
-
-function createInitPacketAppDatFile(appSize: number): Uint8Array {
-  //typedef struct {
-  //    uint8_t  magic[12];                 // identify this struct "microbit_app"
-  //    uint32_t version;                   // version of this struct == 1
-  //    uint32_t app_size;                  // only used for DFU_FW_TYPE_APPLICATION
-  //    uint32_t hash_size;                 // 32 => DFU_HASH_TYPE_SHA256 or zero to bypass hash check
-  //    uint8_t  hash_bytes[32];            // hash of whole DFU download
-  //} microbit_dfu_app_t;
-  const magic = "microbit_app";
-  const version = 1;
-  const hashSize = 0;
-  const hash = new Uint8Array(32).fill(0);
-
-  const buffer = new ArrayBuffer(12 + 4 + 4 + 4 + 32); // total: 56 bytes
-  const view = new DataView(buffer);
-  const uint8View = new Uint8Array(buffer);
-
-  let offset = 0;
-
-  // Write magic string (12 bytes)
-  const encoder = new TextEncoder();
-  const magicBytes = encoder.encode(magic);
-  uint8View.set(magicBytes, offset);
-  offset += 12;
-
-  // Write version (4 bytes, little-endian)
-  view.setUint32(offset, version, true);
-  offset += 4;
-
-  // Write appSize (4 bytes, little-endian)
-  view.setUint32(offset, appSize, true);
-  offset += 4;
-
-  // Write hashSize (4 bytes, little-endian)
-  view.setUint32(offset, hashSize, true);
-  offset += 4;
-
-  // Write hash (32 bytes)
-  uint8View.set(hash, offset);
-
-  return uint8View;
+  console.log(`Extracted app bin: ${appBin.length} bytes`);
+  return flashDfu(device, deviceVersion, appBin, progress);
 }
 
 async function requestRebootToBootloaderV1Only(deviceId: string) {
@@ -123,3 +79,36 @@ async function requestRebootToBootloaderV1Only(deviceId: string) {
     return false;
   }
 }
+
+const createAppBin = (
+  appHex: string,
+  deviceVersion: DeviceVersion
+): Uint8Array | null => {
+  const memoryMap = MemoryMap.fromHex(appHex);
+
+  const appRegionBoundaries = {
+    [DeviceVersion.V1]: { start: 0x18000, end: 0x3c000 },
+    [DeviceVersion.V2]: { start: 0x1c000, end: 0x77000 },
+  }[deviceVersion];
+
+  // Calculate data size within the app region
+  let maxAddress = appRegionBoundaries.start;
+  for (const [blockAddr, block] of memoryMap) {
+    const blockEnd = blockAddr + block.length;
+    if (
+      blockEnd > appRegionBoundaries.start &&
+      blockAddr < appRegionBoundaries.end
+    ) {
+      maxAddress = Math.max(
+        maxAddress,
+        Math.min(blockEnd, appRegionBoundaries.end)
+      );
+    }
+  }
+
+  let size = maxAddress - appRegionBoundaries.start;
+  // 4-byte alignment required by DFU
+  size = Math.ceil(size / 4) * 4;
+
+  return memoryMap.slicePad(appRegionBoundaries.start, size);
+};
