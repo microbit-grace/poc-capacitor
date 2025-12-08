@@ -97,8 +97,11 @@ function App() {
         "Please enable Bluetooth in the Settings app.",
       [FlashResult.DeviceNotFound]:
         "Failed to find a micro:bit that matches the pattern you entered. Please try again.",
-      [FlashResult.FailedToConnect]:
-        "Failed to connect to your micro:bit. Please try again and ensure your micro:bit is showing the pattern and your phone has Bluetooth enabled.",
+      [FlashResult.FailedToConnect]: `Failed to connect to your micro:bit. ${
+        platform === "ios"
+          ? "Please forget your micro:bit in Bluetooth settings and try again."
+          : "Please try again."
+      } Ensure your micro:bit is showing the pattern and your phone has Bluetooth enabled.`,
       [FlashResult.InvalidHex]: "The program (.hex) is invalid.",
       [FlashResult.PartialFlashFailed]:
         "Partial flashing failed. Please try again. If that fails, program the micro:bit from a computer with a USB cable then try again with the app.",
