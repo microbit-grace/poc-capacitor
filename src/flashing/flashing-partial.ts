@@ -31,10 +31,11 @@ const partialFlash = async (
     PARTIAL_FLASH_CHARACTERISTIC
   );
 
-  const result = await Promise.race([
-    device.disconnectTracker?.promise,
+  const result = await device.raceDisconnectAndTimeout(
     partialFlashInternal(device, appHex, progress),
-  ]);
+    // TODO: Add partial flashing timeout.
+    undefined
+  );
 
   if (!result) {
     throw new Error("Disconnected whilst partial flashing");

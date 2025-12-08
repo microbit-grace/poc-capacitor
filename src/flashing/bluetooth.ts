@@ -241,12 +241,34 @@ export class Device {
     this.log(`Waiting for disconnect (timeout ${timeout})`);
     const result = await Promise.race([
       this.disconnectTracker.promise,
-      new Promise((resolve) => setTimeout(() => resolve("timeout"), timeout)),
+      this.timeoutPromise(timeout),
     ]);
     if (result === "timeout") {
       this.log("Timeout waiting for disconnect");
       throw new Error("Timeout waiting for disconnect");
     }
+  }
+
+  async raceDisconnectAndTimeout<T>(
+    promise: Promise<T>,
+    timeout: number | undefined
+  ) {
+    const result = await Promise.race<T | void | "timeout">([
+      promise,
+      ...(this.disconnectTracker ? [this.disconnectTracker.promise] : []),
+      ...(timeout ? [this.timeoutPromise(timeout)] : []),
+    ]);
+    if (result === "timeout") {
+      this.log("Timeout racing disconnect");
+      throw new Error("Timeout racing disconnect");
+    }
+    return result;
+  }
+
+  private timeoutPromise(timeout: number) {
+    return new Promise<"timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), timeout)
+    );
   }
 
   log(message: string) {
