@@ -42,7 +42,9 @@ export async function initializeBluetooth(): Promise<BluetoothInitializationResu
       return BluetoothInitializationResult.MissingPermissions;
     }
   }
-  await BleClient.initialize({ androidNeverForLocation: true });
+  await BleClient.initialize(
+    isAndroid() ? { androidNeverForLocation: true } : undefined
+  );
   // Check if Bluetooth is enabled.
   const isBluetoothEnabled = await BleClient.isEnabled();
   if (!isBluetoothEnabled) {

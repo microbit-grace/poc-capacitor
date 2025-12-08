@@ -1,17 +1,16 @@
 import MemoryMap from "nrf-intel-hex";
-import { delay } from "../utils";
 import { Device } from "./bluetooth";
 import {
   PARTIAL_FLASH_CHARACTERISTIC,
   PARTIAL_FLASHING_SERVICE,
 } from "./constants";
+import { findMakeCodeRegionInMemoryMap } from "./flashing-makecode";
 import { FlashProgressStage, Progress } from "./model";
 import {
   PacketState,
   PartialFlashingService,
   RegionId,
 } from "./partial-flashing-service";
-import { findMakeCodeRegionInMemoryMap } from "./flashing-makecode";
 
 export enum PartialFlashResult {
   Success = "Success",
@@ -41,9 +40,14 @@ const partialFlash = async (
     throw new Error("Disconnected whilst partial flashing");
   }
 
-  await device.stopNotifications(
-    PARTIAL_FLASHING_SERVICE,
-    PARTIAL_FLASH_CHARACTERISTIC
+  // micro:bit V1 disconnects quickly after partial flashing. This race avoids
+  // stopNotifications from throwing error due to the disconnection.
+  await device.raceDisconnectAndTimeout(
+    device.stopNotifications(
+      PARTIAL_FLASHING_SERVICE,
+      PARTIAL_FLASH_CHARACTERISTIC
+    ),
+    undefined
   );
 
   return result;
@@ -140,9 +144,7 @@ const partialFlashInternal = async (
       offset += 64;
     }
 
-    await delay(100); // allow time for write to complete
     await pf.writeEndOfFlashPacket();
-    await delay(100); // allow time for write to complete
     progress(FlashProgressStage.Partial, 100);
 
     return PartialFlashResult.Success;
