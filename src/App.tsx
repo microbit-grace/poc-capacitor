@@ -6,6 +6,7 @@ import BluetoothPatternInput from "./components/BluetoothPatternInput";
 import { flash } from "./flashing";
 import { FlashProgressStage, FlashResult, Progress } from "./flashing/model";
 import { useDeviceName } from "./hooks/use-device-name";
+import { BleClient } from "@capacitor-community/bluetooth-le";
 
 const starterProject = {
   text: {
@@ -29,7 +30,7 @@ type Step =
     }
   | {
       name: "flash-error";
-      message: string;
+      children: ReactNode;
     };
 
 function App() {
@@ -91,30 +92,73 @@ function App() {
       return;
     }
     const errorMessage = {
-      [FlashResult.MissingPermissions]:
-        "The app requires Bluetooth permissions. If using an Android device, location should be enabled.",
+      [FlashResult.MissingPermissions]: (
+        <p>
+          The app requires Bluetooth permissions.{" "}
+          {platform === "android" && (
+            <button onClick={() => BleClient.openLocationSettings()}>
+              Location should be enabled.
+            </button>
+          )}
+        </p>
+      ),
       [FlashResult.BluetoothDisabled]:
-        "Please enable Bluetooth in the Settings app.",
-      [FlashResult.DeviceNotFound]:
-        "Failed to find a micro:bit that matches the pattern you entered. Please try again.",
-      [FlashResult.FailedToConnect]: `Failed to connect to your micro:bit. ${
-        platform === "ios"
-          ? "Please forget your micro:bit in Bluetooth settings and try again."
-          : "Please try again."
-      } Ensure your micro:bit is showing the pattern and your phone has Bluetooth enabled.`,
-      [FlashResult.InvalidHex]: "The program (.hex) is invalid.",
-      [FlashResult.PartialFlashFailed]:
-        "Partial flashing failed. Please try again. If that fails, program the micro:bit from a computer with a USB cable then try again with the app.",
-      [FlashResult.FullFlashFailed]:
-        "Full flashing failed. Please try again. If that fails, program the micro:bit from a computer with a USB cable then try again with the app.",
-      [FlashResult.Cancelled]: "Cancelled",
+        platform === "android" ? (
+          <p>
+            Please{" "}
+            <button onClick={() => BleClient.openBluetoothSettings()}>
+              enable Bluetooth in the Settings app
+            </button>
+            .
+          </p>
+        ) : (
+          <p>
+            Please enable Bluetooth in the Settings and in the{" "}
+            <button onClick={() => BleClient.openAppSettings()}>
+              app's settings
+            </button>
+            .
+          </p>
+        ),
+      [FlashResult.DeviceNotFound]: (
+        <p>
+          Failed to find a micro:bit that matches the pattern you entered.
+          Please try again.
+        </p>
+      ),
+      [FlashResult.FailedToConnect]: (
+        <p>
+          Failed to connect to your micro:bit.{" "}
+          {platform === "ios"
+            ? "Please forget your micro:bit in Bluetooth settings and try again."
+            : "Please try again."}{" "}
+          Ensure your micro:bit is showing the pattern and your phone has
+          Bluetooth enabled.
+        </p>
+      ),
+      [FlashResult.InvalidHex]: <p>The program (.hex) is invalid."</p>,
+      [FlashResult.PartialFlashFailed]: (
+        <p>
+          Partial flashing failed. Please try again. If that fails, program the
+          micro:bit from a computer with a USB cable then try again with the
+          app.
+        </p>
+      ),
+      [FlashResult.FullFlashFailed]: (
+        <p>
+          Full flashing failed. Please try again. If that fails, program the
+          micro:bit from a computer with a USB cable then try again with the
+          app.
+        </p>
+      ),
+      [FlashResult.Cancelled]: <p>Cancelled</p>,
     }[flashResult];
 
     setStep({
       name: "flash-error",
-      message: errorMessage,
+      children: errorMessage,
     });
-  }, [deviceName, hex, saveDeviceName, updateStep]);
+  }, [deviceName, hex, platform, saveDeviceName, updateStep]);
 
   if (platform === "web") {
     return (
@@ -244,7 +288,7 @@ function App() {
                   onClick: () => setStep({ name: "pair-mode" }),
                 }}
               >
-                <p>{step.message}</p>
+                {step.children}
               </Content>
             )}
           </div>
