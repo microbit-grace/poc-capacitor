@@ -104,7 +104,7 @@ export async function findMatchingDevice(
 
 export class Device {
   private tag: string | undefined;
-  private disconnectTracker:
+  disconnectTracker:
     | { promise: Promise<void>; onDisconnect: () => void }
     | undefined;
   private notificationListeners = new Map<
