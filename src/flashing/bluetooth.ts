@@ -253,9 +253,13 @@ export class Device {
     promise: Promise<T>,
     timeout: number | undefined
   ) {
+    if (!this.disconnectTracker) {
+      this.log("Racing disconnect but not connected");
+      return;
+    }
     const result = await Promise.race<T | void | "timeout">([
       promise,
-      ...(this.disconnectTracker ? [this.disconnectTracker.promise] : []),
+      this.disconnectTracker.promise,
       ...(timeout ? [this.timeoutPromise(timeout)] : []),
     ]);
     if (result === "timeout") {
