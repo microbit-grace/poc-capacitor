@@ -96,7 +96,6 @@ export async function flashDfu(
   try {
     // eslint-disable-next-line no-async-promise-executor
     return await new Promise(async (resolve) => {
-      // Note this doesn't await the whole DFU process, just its initialization
       listener = await NordicDfu.addListener(
         "DFUStateChanged",
         ({ state, data }) => {
@@ -123,6 +122,7 @@ export async function flashDfu(
           }
         }
       );
+      // Note this doesn't await the whole DFU process, just its initialization
       const error = await NordicDfu.startDFU({
         deviceName: device.name,
         deviceAddress: device.deviceId,
