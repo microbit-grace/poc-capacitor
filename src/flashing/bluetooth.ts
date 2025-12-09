@@ -111,18 +111,22 @@ export async function findMatchingDevice(
   }
 
   console.log(`Scanning for device - ${namePrefix}`);
+  let found = false;
   const scanPromise: Promise<BleDevice> = new Promise(
     (res) =>
       // This only resolves when we stop the scan.
       void BleClient.requestLEScan({ namePrefix }, async (result) => {
         await BleClient.stopLEScan();
+        found = true;
         res(result.device);
       })
   );
   const scanTimeoutPromise: Promise<undefined> = new Promise((resolve) =>
     setTimeout(async () => {
-      await BleClient.stopLEScan();
-      console.log("Timeout scanning for device");
+      if (!found) {
+        await BleClient.stopLEScan();
+        console.log("Timeout scanning for device");
+      }
       resolve(undefined);
     }, scanningTimeoutInMs)
   );
