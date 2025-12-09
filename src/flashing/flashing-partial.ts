@@ -1,6 +1,6 @@
 import MemoryMap from "nrf-intel-hex";
 import { delay } from "../utils";
-import { Device } from "./bluetooth";
+import { Device, DisconnectError } from "./bluetooth";
 import {
   PARTIAL_FLASH_CHARACTERISTIC,
   PARTIAL_FLASHING_SERVICE,
@@ -31,12 +31,22 @@ const partialFlash = async (
     PARTIAL_FLASH_CHARACTERISTIC
   );
 
-  const result = await partialFlashInternal(device, appHex, progress);
-
-  await device.stopNotifications(
-    PARTIAL_FLASHING_SERVICE,
-    PARTIAL_FLASH_CHARACTERISTIC
+  const result = await device.raceDisconnectAndTimeout(
+    partialFlashInternal(device, appHex, progress),
+    { timeout: 30_000, actionName: "partial flash" }
   );
+
+  try {
+    await device.stopNotifications(
+      PARTIAL_FLASHING_SERVICE,
+      PARTIAL_FLASH_CHARACTERISTIC
+    );
+  } catch (e) {
+    // V1 disconnects quickly after a partial flash.
+    if (!(e instanceof DisconnectError)) {
+      device.log(`Warning: Error stopping notifications: ${e}`);
+    }
+  }
 
   return result;
 };

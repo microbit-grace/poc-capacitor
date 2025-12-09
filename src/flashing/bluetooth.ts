@@ -28,6 +28,22 @@ export enum WriteType {
 export const bondingTimeoutInMs = 40_000;
 export const connectTimeoutInMs = 10_000;
 const scanningTimeoutInMs = 10_000;
+const disconnectSymbol: unique symbol = Symbol("disconnected");
+const timeoutSymbol: unique symbol = Symbol("timeout");
+
+export class BluetoothError extends Error {}
+
+export class TimeoutError extends BluetoothError {
+  constructor() {
+    super("Timeout");
+  }
+}
+
+export class DisconnectError extends BluetoothError {
+  constructor() {
+    super("Disconnect");
+  }
+}
 
 const isAndroid = () => Capacitor.getPlatform() === "android";
 type BleClientError = { message: string; errorMessage: string };
@@ -115,8 +131,8 @@ export async function findMatchingDevice(
 
 export class Device {
   private tag: string | undefined;
-  private disconnectTracker:
-    | { promise: Promise<void>; onDisconnect: () => void }
+  disconnectTracker:
+    | { promise: Promise<typeof disconnectSymbol>; onDisconnect: () => void }
     | undefined;
   private notificationListeners = new Map<
     string,
@@ -128,11 +144,11 @@ export class Device {
   async connect(tag: string) {
     this.tag = tag;
     let onDisconnect: (() => void) | undefined;
-    const promise = new Promise<void>((resolve) => {
+    const promise = new Promise<typeof disconnectSymbol>((resolve) => {
       onDisconnect = () => {
         this.log("Disconnected");
         this.notificationListeners = new Map();
-        resolve();
+        resolve(disconnectSymbol);
       };
     });
     this.disconnectTracker = { promise, onDisconnect: onDisconnect! };
@@ -236,7 +252,10 @@ export class Device {
           value
         );
       }
-      return await notificationPromise;
+      return await this.raceDisconnectAndTimeout(notificationPromise, {
+        timeout: 3_000,
+        actionName: "flash notification wait",
+      });
     } finally {
       if (notificationListener) {
         this.unsubscribe(serviceId, characteristicId, notificationListener);
@@ -252,12 +271,49 @@ export class Device {
     this.log(`Waiting for disconnect (timeout ${timeout})`);
     const result = await Promise.race([
       this.disconnectTracker.promise,
-      new Promise((resolve) => setTimeout(() => resolve("timeout"), timeout)),
+      this.timeoutPromise(timeout),
     ]);
-    if (result === "timeout") {
+    if (result === timeoutSymbol) {
       this.log("Timeout waiting for disconnect");
-      throw new Error("Timeout waiting for disconnect");
+      throw new TimeoutError();
     }
+  }
+
+  /**
+   * Suitable for running a series of BLE interactions with an overall timeout
+   * and general disconnection
+   */
+  async raceDisconnectAndTimeout<T>(
+    promise: Promise<T>,
+    options: {
+      actionName?: string;
+      timeout?: number;
+    } = {}
+  ): Promise<T> {
+    if (!this.disconnectTracker) {
+      throw new DisconnectError();
+    }
+    const actionName = options.actionName ?? "action";
+    const result = await Promise.race([
+      promise,
+      this.disconnectTracker.promise,
+      ...(options.timeout ? [this.timeoutPromise(options.timeout)] : []),
+    ]);
+    if (result === timeoutSymbol) {
+      this.log(`Timeout during ${actionName}`);
+      throw new TimeoutError();
+    }
+    if (result === disconnectSymbol) {
+      this.log(`Disconnected during ${actionName}`);
+      throw new DisconnectError();
+    }
+    return result;
+  }
+
+  private timeoutPromise(timeout: number): Promise<typeof timeoutSymbol> {
+    return new Promise((resolve) =>
+      setTimeout(() => resolve(timeoutSymbol), timeout)
+    );
   }
 
   log(message: string) {
