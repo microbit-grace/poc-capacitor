@@ -86,7 +86,7 @@ async function checkBondedDevices(predicate: (device: BleDevice) => boolean) {
   const bondedDevices = await BleClient.getBondedDevices();
   const result = bondedDevices.find(predicate);
   console.log(
-    result === null
+    result === undefined
       ? "No matching bonded device"
       : "Found matching bonded device"
   );
