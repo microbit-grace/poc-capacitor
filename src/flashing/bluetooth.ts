@@ -30,25 +30,36 @@ export const connectTimeoutInMs = 10_000;
 const scanningTimeoutInMs = 10_000;
 
 const isAndroid = () => Capacitor.getPlatform() === "android";
+type BleClientError = { message: string; errorMessage: string };
 
 /**
  * Initializes BLE.
  */
 export async function initializeBluetooth(): Promise<BluetoothInitializationResult> {
-  // Check if location is enabled.
-  if (isAndroid()) {
-    const isLocationEnabled = await BleClient.isLocationEnabled();
-    if (!isLocationEnabled) {
-      return BluetoothInitializationResult.MissingPermissions;
+  try {
+    // Check if location is enabled.
+    if (isAndroid()) {
+      const isLocationEnabled = await BleClient.isLocationEnabled();
+      if (!isLocationEnabled) {
+        return BluetoothInitializationResult.MissingPermissions;
+      }
     }
+    await BleClient.initialize({ androidNeverForLocation: true });
+    // Check if Bluetooth is enabled.
+    const isBluetoothEnabled = await BleClient.isEnabled();
+    if (!isBluetoothEnabled) {
+      return BluetoothInitializationResult.BluetoothDisabled;
+    }
+    return BluetoothInitializationResult.Success;
+  } catch (e: unknown) {
+    const error = e as BleClientError;
+    if (error.message === "BLE permission denied") {
+      // Error thrown for iOS platform.
+      return BluetoothInitializationResult.BluetoothDisabled;
+    }
+    console.log("Error initializing Bluetooth", error);
+    return BluetoothInitializationResult.MissingPermissions;
   }
-  await BleClient.initialize({ androidNeverForLocation: true });
-  // Check if Bluetooth is enabled.
-  const isBluetoothEnabled = await BleClient.isEnabled();
-  if (!isBluetoothEnabled) {
-    return BluetoothInitializationResult.BluetoothDisabled;
-  }
-  return BluetoothInitializationResult.Success;
 }
 
 async function checkBondedDevices(predicate: (device: BleDevice) => boolean) {
