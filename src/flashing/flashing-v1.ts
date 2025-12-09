@@ -1,5 +1,4 @@
 import { BleClient } from "@capacitor-community/bluetooth-le";
-import { MICROBIT_DFU_SERVICE, NORDIC_DFU_SERVICE } from "./constants";
 
 /**
  * V1 changes the service it offers in application/bootloader mode.
@@ -16,16 +15,9 @@ export const refreshServicesForV1IfDesiredServiceMissing = async (
   desiredServiceUuid: string
 ) => {
   const services = await BleClient.getServices(deviceId);
-  const isV1 = services.some(
-    (s) => s.uuid === MICROBIT_DFU_SERVICE || s.uuid === NORDIC_DFU_SERVICE
-  );
-  console.log("isV1", isV1);
-  if (isV1) {
-    const deviceHasService = services.some(
-      (s) => s.uuid === desiredServiceUuid
-    );
-    if (!deviceHasService) {
-      await BleClient.discoverServices(deviceId);
-    }
+  const deviceHasService = services.some((s) => s.uuid === desiredServiceUuid);
+  if (!deviceHasService) {
+    // On Android this does use the refresh reflection hack.
+    await BleClient.discoverServices(deviceId);
   }
 };

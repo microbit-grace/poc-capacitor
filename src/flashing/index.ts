@@ -1,5 +1,4 @@
 import { BleClient, BleDevice } from "@capacitor-community/bluetooth-le";
-import { delay } from "../utils";
 import {
   BluetoothInitializationResult,
   connectHandlingBond,
@@ -62,26 +61,14 @@ async function flashDevice(
   progress: Progress
 ): Promise<FlashResult> {
   progress(FlashProgressStage.Connecting);
-  const { deviceId } = bleDevice;
-  const device = new Device(deviceId);
+  const { deviceId, name } = bleDevice;
+  const device = new Device(deviceId, name);
   const connected = await connectHandlingBond(device);
   if (!connected) {
     return FlashResult.FailedToConnect;
   }
 
   try {
-    // TODO: Is this needed?
-    // On iOS, don't we already use the PF service above to trigger bonding.
-    // Old comment:
-    // Taken from Nordic. See reasoning here: https://github.com/NordicSemiconductor/Android-DFU-Library/blob/e0ab213a369982ae9cf452b55783ba0bdc5a7916/dfu/src/main/java/no/nordicsemi/android/dfu/DfuBaseService.java#L888 */
-    console.log(
-      "Waiting for service changed notification before discovering services"
-    );
-    // We could short-circuit this by racing it with the GATT callback on
-    // Android 12+ and the equivalent on iOS
-    await delay(1600);
-    await BleClient.discoverServices(deviceId);
-
     const deviceVersion = await getDeviceVersion(deviceId);
     console.log(`Detected device version as ${deviceVersion}`);
 
@@ -108,7 +95,7 @@ async function flashDevice(
       case PartialFlashResult.AttemptFullFlash: {
         // We can also end up here because of cancellation of pairing.
         // Can we detect this nicely?
-        return fullFlash(bleDevice, deviceVersion, appHex, progress);
+        return fullFlash(device, deviceVersion, appHex, progress);
       }
       default: {
         return FlashResult.Cancelled;
