@@ -354,7 +354,7 @@ export async function connectHandlingBond(device: Device): Promise<boolean> {
       try {
         await device.waitForDisconnect(3000);
       } catch (e) {
-        if (!isAndroid()) {
+        if (e instanceof TimeoutError) {
           device.log("No disconnect after bond, assuming connection is stable");
           return true;
         }
