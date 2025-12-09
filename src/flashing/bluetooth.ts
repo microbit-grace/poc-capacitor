@@ -169,16 +169,19 @@ export class Device {
     options?: TimeoutOptions
   ): Promise<void> {
     const key = this.getNotificationKey(serviceId, characteristicId);
-    await BleClient.startNotifications(
-      this.deviceId,
-      serviceId,
-      characteristicId,
-      (value: DataView) => {
-        const bytes = new Uint8Array(value.buffer);
-        // Notify all registered callbacks.
-        this.notificationListeners.get(key)?.forEach((cb) => cb(bytes));
-      },
-      options
+    await this.raceDisconnectAndTimeout(
+      BleClient.startNotifications(
+        this.deviceId,
+        serviceId,
+        characteristicId,
+        (value: DataView) => {
+          const bytes = new Uint8Array(value.buffer);
+          // Notify all registered callbacks.
+          this.notificationListeners.get(key)?.forEach((cb) => cb(bytes));
+        },
+        options
+      ),
+      { actionName: "start notifications" }
     );
   }
 
@@ -354,7 +357,7 @@ export async function connectHandlingBond(device: Device): Promise<boolean> {
       try {
         await device.waitForDisconnect(3000);
       } catch (e) {
-        if (!isAndroid()) {
+        if (e instanceof TimeoutError) {
           device.log("No disconnect after bond, assuming connection is stable");
           return true;
         }
