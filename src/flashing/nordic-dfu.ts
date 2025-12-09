@@ -1,17 +1,25 @@
-import { PluginListenerHandle } from "@capacitor/core";
-import { Directory, Filesystem, WriteFileOptions } from "@capacitor/filesystem";
+import { BleDevice } from "@capacitor-community/bluetooth-le";
 import { DfuState, NordicDfu } from "@microbit/capacitor-community-nordic-dfu";
-import JSZip from "jszip";
-import { Device } from "./bluetooth";
 import {
   DeviceVersion,
   FlashProgressStage,
   FlashResult,
   Progress,
 } from "./model";
+import { Directory, Filesystem, WriteFileOptions } from "@capacitor/filesystem";
+import JSZip from "jszip";
+import { Capacitor, PluginListenerHandle } from "@capacitor/core";
 
 const appBinFilename = "application.bin";
 const appDatFilename = "application.dat";
+const manifestData = JSON.stringify({
+  manifest: {
+    application: {
+      bin_file: appBinFilename,
+      dat_file: appDatFilename,
+    },
+  },
+});
 
 function uint8ArrayToBase64(uint8Array: Uint8Array): string {
   let binary = "";
@@ -28,26 +36,17 @@ async function writeCacheFile(options: Omit<WriteFileOptions, "directory">) {
   return uri;
 }
 
-async function createDfuZipFile(
-  appBin: Uint8Array,
-  deviceVersion: DeviceVersion
-): Promise<string> {
-  const manifest: { manifest: { application: Record<string, string> } } = {
-    manifest: {
-      application: {
-        // Added below
-      },
-    },
-  };
+async function createAppBinFile(appBin: Uint8Array): Promise<string> {
+  return await writeCacheFile({
+    path: "dfu-app-bin.bin",
+    data: uint8ArrayToBase64(appBin),
+  });
+}
 
+async function createDfuZipFile(appBin: Uint8Array): Promise<string> {
   const zip = new JSZip();
-  if (deviceVersion == DeviceVersion.V2) {
-    manifest.manifest.application.dat_file = appDatFilename;
-    zip.file(appDatFilename, createInitPacket(appBin.length));
-  }
-  manifest.manifest.application.bin_file = appBinFilename;
+  zip.file(appDatFilename, createInitPacket(appBin.length));
   zip.file(appBinFilename, appBin);
-  const manifestData = JSON.stringify(manifest);
   zip.file("manifest.json", manifestData);
 
   const zipDataAsUint8Array = await zip.generateAsync({
@@ -67,10 +66,10 @@ async function getFilePath(
   appBin: Uint8Array
 ): Promise<{ uri: string; filename: string }> {
   if (deviceVersion === DeviceVersion.V1) {
-    // const uri = await createAppBinFile(appBin);
-    // return { uri, filename: "dfu-app-bin.bin" };
+    const uri = await createAppBinFile(appBin);
+    return { uri, filename: "dfu-app-bin.bin" };
   }
-  const uri = await createDfuZipFile(appBin, deviceVersion);
+  const uri = await createDfuZipFile(appBin);
   return { uri, filename: "dfu.zip" };
 }
 
@@ -87,7 +86,7 @@ async function cleanupTemporaryFile(filename: string): Promise<void> {
 }
 
 export async function flashDfu(
-  device: Device,
+  device: BleDevice,
   deviceVersion: DeviceVersion,
   appBin: Uint8Array,
   progress: Progress
@@ -115,7 +114,6 @@ export async function flashDfu(
               break;
             }
             case DfuState.DFU_FAILED: {
-              console.error(data);
               resolve(FlashResult.FullFlashFailed);
               break;
             }
@@ -129,19 +127,22 @@ export async function flashDfu(
         deviceName: device.name,
         deviceAddress: device.deviceId,
         filePath,
-        dfuOptions: {
-          ...{
-            [DeviceVersion.V1]: { forceDfu: true },
-            [DeviceVersion.V2]: {
-              unsafeExperimentalButtonlessServiceInSecureDfuEnabled: true,
-              disableNotification: true,
-              restoreBond: true,
-            },
-          }[deviceVersion],
-          startAsForegroundService: false,
-          keepBond: true,
-          packetReceiptNotificationsEnabled: true,
-        },
+        dfuOptions:
+          Capacitor.getPlatform() === "android"
+            ? {
+                ...{
+                  [DeviceVersion.V1]: { forceDfu: true },
+                  [DeviceVersion.V2]: {
+                    unsafeExperimentalButtonlessServiceInSecureDfuEnabled: true,
+                    disableNotification: true,
+                    restoreBond: true,
+                  },
+                }[deviceVersion],
+                startAsForegroundService: false,
+                keepBond: true,
+                packetReceiptNotificationsEnabled: true,
+              }
+            : {},
       });
       if (error) {
         console.log(`DFU Error: ${error.message}`);

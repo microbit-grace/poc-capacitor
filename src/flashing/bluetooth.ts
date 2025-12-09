@@ -119,13 +119,12 @@ export async function findMatchingDevice(
       void BleClient.requestLEScan({}, async (result) => {
         // For a V1 in the Nordic bootloader, we see a name of "DfuTarg" that
         // isn't matched by the name filter but the advertising name is in the
-        // localName on the device. So we filter here instead.  This happens if
-        // DFU fails / is interrupted.
+        // localName on the device. So we filter here instead.  This happens on
+        // iOS DFU fails / is interrupted.
         if (
           result.device.name?.startsWith(namePrefix) ||
           result.localName?.startsWith(namePrefix)
         ) {
-          console.log("Scan found ", result.device.name, result.localName);
           found = true;
           await BleClient.stopLEScan();
           resolve(result.device);
