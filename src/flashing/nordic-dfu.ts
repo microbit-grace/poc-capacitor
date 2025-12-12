@@ -36,16 +36,16 @@ async function writeCacheFile(options: Omit<WriteFileOptions, "directory">) {
   return uri;
 }
 
-async function createAppBinFile(appBin: Uint8Array): Promise<string> {
-  return await writeCacheFile({
-    path: "dfu-app-bin.bin",
-    data: uint8ArrayToBase64(appBin),
-  });
-}
-
-async function createDfuZipFile(appBin: Uint8Array): Promise<string> {
+async function createDfuZipFile(
+  deviceVersion: DeviceVersion,
+  appBin: Uint8Array
+): Promise<string> {
   const zip = new JSZip();
-  zip.file(appDatFilename, createInitPacket(appBin.length));
+  const createInitPacket =
+    deviceVersion === DeviceVersion.V1
+      ? createLegacyInitPacketV1
+      : createInitPacketV2;
+  zip.file(appDatFilename, createInitPacket(appBin));
   zip.file(appBinFilename, appBin);
   zip.file("manifest.json", manifestData);
 
@@ -65,11 +65,7 @@ async function getFilePath(
   deviceVersion: DeviceVersion,
   appBin: Uint8Array
 ): Promise<{ uri: string; filename: string }> {
-  if (deviceVersion === DeviceVersion.V1) {
-    const uri = await createAppBinFile(appBin);
-    return { uri, filename: "dfu-app-bin.bin" };
-  }
-  const uri = await createDfuZipFile(appBin);
+  const uri = await createDfuZipFile(deviceVersion, appBin);
   return { uri, filename: "dfu.zip" };
 }
 
@@ -156,7 +152,63 @@ export async function flashDfu(
   }
 }
 
-const createInitPacket = (appSize: number): Uint8Array => {
+const createLegacyInitPacketV1 = (appData: Uint8Array): Uint8Array => {
+  // Legacy DFU init packet structure for micro:bit V1
+  // Based on: dev-type 0xFFFF, dev-revision 0xFFFFFFFF, application-version 0xFFFFFFFF, sd-req 0x64
+  
+  const buffer = new ArrayBuffer(14);
+  const view = new DataView(buffer);
+  const uint8View = new Uint8Array(buffer);
+  
+  let offset = 0;
+  
+  // Device Type (2 bytes, little-endian) - 0xFFFF (wildcard)
+  view.setUint16(offset, 0xFFFF, true);
+  offset += 2;
+  
+  // Device Revision (2 bytes, little-endian) - 0xFFFF (wildcard, truncated from 0xFFFFFFFF)
+  view.setUint16(offset, 0xFFFF, true);
+  offset += 2;
+  
+  // Application Version (4 bytes, little-endian) - 0xFFFFFFFF (wildcard)
+  view.setUint32(offset, 0xFFFFFFFF, true);
+  offset += 4;
+  
+  // SoftDevice length (2 bytes, little-endian) - 1 (one SoftDevice requirement)
+  view.setUint16(offset, 1, true);
+  offset += 2;
+  
+  // SoftDevice requirement (2 bytes, little-endian) - 0x0064 (S110 v10.0)
+  view.setUint16(offset, 0x0064, true);
+  offset += 2;
+  
+  // CRC-16 of the application (2 bytes, little-endian)
+  const crc16 = calculateCRC16(appData);
+  view.setUint16(offset, crc16, true);
+  
+  return uint8View;
+};
+
+const calculateCRC16 = (data: Uint8Array): number => {
+  // CRC-16/CCITT-FALSE (polynomial 0x1021, initial value 0xFFFF)
+  let crc = 0xFFFF;
+  
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i] << 8;
+    
+    for (let j = 0; j < 8; j++) {
+      if (crc & 0x8000) {
+        crc = (crc << 1) ^ 0x1021;
+      } else {
+        crc = crc << 1;
+      }
+    }
+  }
+  
+  return crc & 0xFFFF;
+};
+
+const createInitPacketV2 = (appBin: Uint8Array): Uint8Array => {
   //typedef struct {
   //    uint8_t  magic[12];                 // identify this struct "microbit_app"
   //    uint32_t version;                   // version of this struct == 1
@@ -164,6 +216,7 @@ const createInitPacket = (appSize: number): Uint8Array => {
   //    uint32_t hash_size;                 // 32 => DFU_HASH_TYPE_SHA256 or zero to bypass hash check
   //    uint8_t  hash_bytes[32];            // hash of whole DFU download
   //} microbit_dfu_app_t;
+  const appSize = appBin.length;
   const magic = "microbit_app";
   const version = 1;
   const hashSize = 0;
