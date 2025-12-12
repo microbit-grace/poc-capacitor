@@ -12,7 +12,7 @@ PODS:
   - CapacitorStatusBar (7.0.3):
     - Capacitor
   - IONFilesystemLib (1.0.1)
-  - MicrobitCapacitorCommunityNordicDfu (7.0.0-microbit.2):
+  - MicrobitCapacitorCommunityNordicDfu (7.0.0-microbit.3):
     - Capacitor
     - NordicDFU (~> 4.16.0)
   - NordicDFU (4.16.0):
@@ -58,7 +58,7 @@ SPEC CHECKSUMS:
   CapacitorPreferences: b583b5deb74e564c35968189d25d32c0fd41200d
   CapacitorStatusBar: 7d8fcbd6768db014bd721d75e246590b014928e8
   IONFilesystemLib: 89258b8e3e85465da93127d25d7ce37f977e8a6f
-  MicrobitCapacitorCommunityNordicDfu: 16171c5e85698a3c35025c93c4739a69456a4500
+  MicrobitCapacitorCommunityNordicDfu: b7d5532fff6f36c4a202ccda3be8d835c2523eb9
   NordicDFU: 116a4ec458945889f8e0e71759e03b23c39c3482
   ZIPFoundation: b8c29ea7ae353b309bc810586181fd073cb3312c
 
