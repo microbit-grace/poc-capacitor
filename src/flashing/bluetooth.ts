@@ -127,6 +127,7 @@ export async function findMatchingDevice(
         ) {
           found = true;
           await BleClient.stopLEScan();
+          console.log("Found device", JSON.stringify(result))
           resolve(result.device);
         }
       })
