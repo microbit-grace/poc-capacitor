@@ -1,16 +1,5 @@
-import {
-  BleClient,
-  BleDevice,
-  numbersToDataView,
-} from "@capacitor-community/bluetooth-le";
 import MemoryMap from "nrf-intel-hex";
-import { delay } from "../utils";
-import {
-  MICROBIT_DFU_CHARACTERISTIC,
-  MICROBIT_DFU_SERVICE,
-  NORDIC_DFU_SERVICE,
-} from "./constants";
-import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
+import { Device } from "./bluetooth";
 import {
   DeviceVersion,
   FlashProgressStage,
@@ -18,6 +7,17 @@ import {
   Progress,
 } from "./model";
 import { flashDfu } from "./nordic-dfu";
+import {
+  BleClient,
+  numbersToDataView,
+} from "@capacitor-community/bluetooth-le";
+import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
+import {
+  MICROBIT_DFU_CHARACTERISTIC,
+  MICROBIT_DFU_SERVICE,
+  NORDIC_DFU_SERVICE,
+} from "./constants";
+import { delay } from "../utils";
 
 /**
  * Perform a full flash via Nordic's DFU service.
@@ -28,7 +28,7 @@ import { flashDfu } from "./nordic-dfu";
  * The device is assumed to be bonded.
  */
 export async function fullFlash(
-  device: BleDevice,
+  device: Device,
   deviceVersion: DeviceVersion,
   appHex: string,
   progress: Progress
@@ -39,16 +39,29 @@ export async function fullFlash(
 
   try {
     if (deviceVersion === DeviceVersion.V1) {
-      const rebooted = await requestRebootToBootloaderV1Only(deviceId);
-      if (!rebooted) {
+      const rebootRequested = await requestRebootToBootloaderV1Only(deviceId);
+      if (!rebootRequested) {
         return FlashResult.FullFlashFailed;
       }
-      await BleClient.disconnect(deviceId);
-      await delay(500);
-      await BleClient.connect(deviceId);
 
+      // Wait for device to automatically disconnect as it reboots into bootloader
+      device.log("Waiting for device to reboot and disconnect");
+      try {
+        await device.waitForDisconnect(3000);
+      } catch {
+        device.log(
+          "Device did not disconnect automatically, disconnecting manually"
+        );
+        await BleClient.disconnect(deviceId);
+      }
+
+      // Give device time to disconnect and reboot into bootloader mode
+      await delay(2500);
+
+      // Reconnect to device now in bootloader mode
+      await device.connect("bootloader-mode");
       await refreshServicesForV1IfDesiredServiceMissing(
-        device.deviceId,
+        deviceId,
         NORDIC_DFU_SERVICE
       );
     }
@@ -74,6 +87,7 @@ async function requestRebootToBootloaderV1Only(deviceId: string) {
       MICROBIT_DFU_CHARACTERISTIC,
       numbersToDataView([0x01])
     );
+    return true;
   } catch (e) {
     console.error(e);
     return false;

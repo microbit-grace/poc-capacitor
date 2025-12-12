@@ -113,12 +113,23 @@ export async function findMatchingDevice(
   console.log(`Scanning for device - ${namePrefix}`);
   let found = false;
   const scanPromise: Promise<BleDevice> = new Promise(
-    (res) =>
+    (resolve) =>
       // This only resolves when we stop the scan.
-      void BleClient.requestLEScan({ namePrefix }, async (result) => {
-        await BleClient.stopLEScan();
-        found = true;
-        res(result.device);
+      // TODO: filter by manufacturer data.
+      void BleClient.requestLEScan({}, async (result) => {
+        // For a V1 in the Nordic bootloader, we see a name of "DfuTarg" that
+        // isn't matched by the name filter but the advertising name is in the
+        // localName on the device. So we filter here instead.  This happens on
+        // iOS DFU fails / is interrupted.
+        if (
+          result.device.name?.startsWith(namePrefix) ||
+          result.localName?.startsWith(namePrefix)
+        ) {
+          found = true;
+          await BleClient.stopLEScan();
+          console.log("Found device", JSON.stringify(result));
+          resolve(result.device);
+        }
       })
   );
   const scanTimeoutPromise: Promise<undefined> = new Promise((resolve) =>
@@ -143,7 +154,7 @@ export class Device {
     Set<(data: Uint8Array) => void>
   >();
 
-  constructor(public deviceId: string) {}
+  constructor(public deviceId: string, public name: string | undefined) {}
 
   async connect(tag: string) {
     this.tag = tag;
@@ -354,14 +365,24 @@ export async function connectHandlingBond(device: Device): Promise<boolean> {
       // resets after a further 13_000 In future we'd like a firmware change
       // that means it doesn't reset when partial flashing is in progress.
       device.log(isAndroid() ? "New bond" : "Potential new bond");
+
+      // On Android with micro:bit V1 we don't see this disconnect (just the 15s
+      // reboot) so we hit the timeout and then continue to reset into pairing
+      // mode.
+      // TODO: document what happens with iOS micro:bit V1 in the new bond case.
       try {
         await device.waitForDisconnect(3000);
       } catch (e) {
         if (e instanceof TimeoutError) {
           device.log("No disconnect after bond, assuming connection is stable");
-          return true;
+          if (!isAndroid()) {
+            // We never knew for sure whether this was a new bond. Assume we
+            // were already bonded on the basis we didn't get disconnected.
+            return true;
+          }
+        } else {
+          throw e;
         }
-        throw e;
       }
 
       await device.connect("post-bond pre-reset");
@@ -391,6 +412,7 @@ async function bondConnectDeviceInternal(device: Device): Promise<boolean> {
       justBonded = true;
     }
     await device.connect("initial");
+
     return justBonded;
   } else {
     // Long timeout as this is the point that the pairing dialog will show.

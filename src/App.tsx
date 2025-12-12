@@ -1,12 +1,12 @@
+import { BleClient } from "@capacitor-community/bluetooth-le";
 import { Capacitor } from "@capacitor/core";
 import { MakeCodeFrame, MakeCodeProject } from "@microbit/makecode-embed";
-import { ReactNode, useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useState } from "react";
 import "./App.css";
 import BluetoothPatternInput from "./components/BluetoothPatternInput";
 import { flash } from "./flashing";
 import { FlashProgressStage, FlashResult, Progress } from "./flashing/model";
 import { useDeviceName } from "./hooks/use-device-name";
-import { BleClient } from "@capacitor-community/bluetooth-le";
 
 const starterProject = {
   text: {
@@ -35,18 +35,10 @@ type Step =
 
 function App() {
   const platform = Capacitor.getPlatform();
-  const { deviceName: savedDeviceName, saveDeviceName } = useDeviceName();
+  const { deviceName, saveDeviceName: setDeviceName } = useDeviceName();
   const [open, setOpen] = useState<boolean>(false);
   const [step, setStep] = useState<Step>({ name: "initial" });
   const [hex, setHex] = useState<null | { name: string; hex: string }>(null);
-  const [deviceName, setDeviceName] = useState<null | string>(null);
-
-  // Sync deviceName when savedDeviceName loads
-  useEffect(() => {
-    if (savedDeviceName && !deviceName) {
-      setDeviceName(savedDeviceName);
-    }
-  }, [savedDeviceName, deviceName]);
 
   const initialProject = useCallback(async () => [starterProject], []);
   const handleClose = useCallback(() => {
@@ -84,8 +76,6 @@ function App() {
     }
     const flashResult = await flash(deviceName, hex.hex, updateStep);
     if (flashResult === FlashResult.Success) {
-      // Save the device name for next time
-      await saveDeviceName(deviceName);
       setStep({
         name: "success",
       });
@@ -158,7 +148,7 @@ function App() {
       name: "flash-error",
       children: errorMessage,
     });
-  }, [deviceName, hex, platform, saveDeviceName, updateStep]);
+  }, [deviceName, hex, platform, updateStep]);
 
   if (platform === "web") {
     return (
@@ -251,7 +241,7 @@ function App() {
               >
                 <BluetoothPatternInput
                   onDeviceNameChange={setDeviceName}
-                  initialValue={savedDeviceName ?? undefined}
+                  initialValue={deviceName ?? undefined}
                 />
               </Content>
             )}
