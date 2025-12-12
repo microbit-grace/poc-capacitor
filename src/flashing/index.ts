@@ -69,6 +69,9 @@ async function flashDevice(
   }
 
   try {
+    // Refresh services before using characteristics.
+    await BleClient.discoverServices(deviceId);
+
     const deviceVersion = await getDeviceVersion(deviceId);
     console.log(`Detected device version as ${deviceVersion}`);
 
@@ -111,7 +114,6 @@ async function flashDevice(
 
 async function getDeviceVersion(deviceId: string): Promise<DeviceVersion> {
   // Read model number from Device Information Service to determine version
-  await BleClient.discoverServices(deviceId);
   const modelNumber = await BleClient.read(
     deviceId,
     DEVICE_INFORMATION_SERVICE,
