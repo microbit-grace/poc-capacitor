@@ -127,7 +127,7 @@ export async function findMatchingDevice(
         ) {
           found = true;
           await BleClient.stopLEScan();
-          console.log("Found device", JSON.stringify(result))
+          console.log("Found device", JSON.stringify(result));
           resolve(result.device);
         }
       })
@@ -365,14 +365,19 @@ export async function connectHandlingBond(device: Device): Promise<boolean> {
       // resets after a further 13_000 In future we'd like a firmware change
       // that means it doesn't reset when partial flashing is in progress.
       device.log(isAndroid() ? "New bond" : "Potential new bond");
+
+      // On Android with micro:bit V1 we don't see this disconnect (just the 15s
+      // reboot) so we hit the timeout and then continue to reset into pairing
+      // mode.
+      // TODO: document what happens with iOS micro:bit V1 in the new bond case.
       try {
         await device.waitForDisconnect(3000);
       } catch (e) {
         if (e instanceof TimeoutError) {
           device.log("No disconnect after bond, assuming connection is stable");
           if (!isAndroid()) {
-            // For iOS, we assume was already bonded so it did not disconnect.
-            // We can skip the post-bond dance.
+            // We never knew for sure whether this was a new bond. Assume we
+            // were already bonded on the basis we didn't get disconnected.
             return true;
           }
         } else {
