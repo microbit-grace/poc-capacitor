@@ -370,9 +370,14 @@ export async function connectHandlingBond(device: Device): Promise<boolean> {
       } catch (e) {
         if (e instanceof TimeoutError) {
           device.log("No disconnect after bond, assuming connection is stable");
-          return true;
+          if (!isAndroid()) {
+            // For iOS, we assume was already bonded so it did not disconnect.
+            // We can skip the post-bond dance.
+            return true;
+          }
+        } else {
+          throw e;
         }
-        throw e;
       }
 
       await device.connect("post-bond pre-reset");
