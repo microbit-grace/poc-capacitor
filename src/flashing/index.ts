@@ -1,15 +1,17 @@
 import { BleClient, BleDevice } from "@capacitor-community/bluetooth-le";
 import {
+  isUniversalHex,
+  microbitBoardId,
+  separateUniversalHex,
+} from "@microbit/microbit-universal-hex";
+import {
   BluetoothInitializationResult,
   connectHandlingBond,
   Device,
   findMatchingDevice,
   initializeBluetooth,
 } from "./bluetooth";
-import {
-  DEVICE_INFORMATION_SERVICE,
-  MODEL_NUMBER_CHARACTERISTIC,
-} from "./constants";
+import { DeviceInformationService } from "./device-information-service";
 import { fullFlash } from "./flashing-full";
 import partialFlash, { PartialFlashResult } from "./flashing-partial";
 import {
@@ -18,11 +20,6 @@ import {
   FlashResult,
   Progress,
 } from "./model";
-import {
-  isUniversalHex,
-  microbitBoardId,
-  separateUniversalHex,
-} from "@microbit/microbit-universal-hex";
 
 /**
  * High-level flashing flow.
@@ -72,8 +69,9 @@ async function flashDevice(
     // Refresh services before using characteristics.
     await BleClient.discoverServices(deviceId);
 
-    const deviceVersion = await getDeviceVersion(deviceId);
-    console.log(`Detected device version as ${deviceVersion}`);
+    const deviceInformationService = new DeviceInformationService(device);
+    const deviceVersion = await deviceInformationService.getDeviceVersion();
+    device.log(`Detected device version as ${deviceVersion}`);
 
     const appHex = createHexFileFromUniversal(hexStr, deviceVersion);
     if (!appHex) {
@@ -96,8 +94,6 @@ async function flashDevice(
         return FlashResult.InvalidHex;
       }
       case PartialFlashResult.AttemptFullFlash: {
-        // We can also end up here because of cancellation of pairing.
-        // Can we detect this nicely?
         return fullFlash(device, deviceVersion, appHex, progress);
       }
       default: {
@@ -105,27 +101,12 @@ async function flashDevice(
       }
     }
   } catch (e) {
-    console.error("Failed to Connect", e);
+    device.log("Failed to connect");
+    device.error(e);
     return FlashResult.FailedToConnect;
   } finally {
-    await BleClient.disconnect(deviceId);
+    await device.disconnect();
   }
-}
-
-async function getDeviceVersion(deviceId: string): Promise<DeviceVersion> {
-  // Read model number from Device Information Service to determine version
-  const modelNumber = await BleClient.read(
-    deviceId,
-    DEVICE_INFORMATION_SERVICE,
-    MODEL_NUMBER_CHARACTERISTIC
-  );
-  const decoder = new TextDecoder();
-  const modelString = decoder.decode(modelNumber);
-  console.log(`Model number from Device Information Service: ${modelString}`);
-  if (modelString.includes("V2")) {
-    return DeviceVersion.V2;
-  }
-  return DeviceVersion.V1;
 }
 
 export const createHexFileFromUniversal = (

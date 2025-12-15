@@ -4,10 +4,6 @@ import {
   TimeoutOptions,
 } from "@capacitor-community/bluetooth-le";
 import { Capacitor } from "@capacitor/core";
-import {
-  PARTIAL_FLASHING_SERVICE,
-  PARTIAL_FLASH_CHARACTERISTIC,
-} from "./constants";
 import { delay } from "../utils";
 import {
   MicroBitMode,
@@ -18,11 +14,6 @@ export enum BluetoothInitializationResult {
   MissingPermissions = "MissingPermissions",
   BluetoothDisabled = "BluetoothDisabled",
   Success = "Success",
-}
-
-export enum WriteType {
-  NoResponse = "NoResponse",
-  Default = "Default",
 }
 
 export const bondingTimeoutInMs = 40_000;
@@ -115,7 +106,6 @@ export async function findMatchingDevice(
   const scanPromise: Promise<BleDevice> = new Promise(
     (resolve) =>
       // This only resolves when we stop the scan.
-      // TODO: filter by manufacturer data.
       void BleClient.requestLEScan({}, async (result) => {
         // For a V1 in the Nordic bootloader, we see a name of "DfuTarg" that
         // isn't matched by the name filter but the advertising name is in the
@@ -240,7 +230,6 @@ export class Device {
     serviceId: string,
     characteristicId: string,
     value: DataView,
-    writeType: WriteType,
     notificationId: number,
     isFinalNotification: (p: Uint8Array) => boolean = () => true
   ): Promise<Uint8Array> {
@@ -255,21 +244,12 @@ export class Device {
     });
 
     try {
-      if (writeType === WriteType.Default) {
-        await BleClient.write(
-          this.deviceId,
-          serviceId,
-          characteristicId,
-          value
-        );
-      } else {
-        await BleClient.writeWithoutResponse(
-          this.deviceId,
-          serviceId,
-          characteristicId,
-          value
-        );
-      }
+      await BleClient.writeWithoutResponse(
+        this.deviceId,
+        serviceId,
+        characteristicId,
+        value
+      );
       return await this.raceDisconnectAndTimeout(notificationPromise, {
         timeout: 3_000,
         actionName: "flash notification wait",
@@ -326,6 +306,10 @@ export class Device {
       throw new DisconnectError();
     }
     return result;
+  }
+
+  async disconnect() {
+    await BleClient.disconnect(this.deviceId);
   }
 
   private timeoutPromise(timeout: number): Promise<typeof timeoutSymbol> {
@@ -421,11 +405,8 @@ async function bondConnectDeviceInternal(device: Device): Promise<boolean> {
     // need to call startNotifications again. We need to be connected to
     // startNotifications.
     await device.connect("initial");
-    await device.startNotifications(
-      PARTIAL_FLASHING_SERVICE,
-      PARTIAL_FLASH_CHARACTERISTIC,
-      { timeout: bondingTimeoutInMs }
-    );
+    const pf = new PartialFlashingService(device);
+    await pf.startNotifications({ timeout: bondingTimeoutInMs });
     return true;
   }
 }
