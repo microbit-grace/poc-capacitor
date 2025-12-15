@@ -1,15 +1,14 @@
 import {
   BleClient,
   numbersToDataView,
+  TimeoutOptions,
 } from "@capacitor-community/bluetooth-le";
 import MemoryMap from "nrf-intel-hex";
-import { Device, WriteType } from "./bluetooth";
-import {
-  MICROBIT_RESET_COMMAND,
-  PARTIAL_FLASH_CHARACTERISTIC,
-  PARTIAL_FLASHING_SERVICE,
-} from "./constants";
+import { Device } from "./bluetooth";
 
+const PARTIAL_FLASHING_SERVICE = "e97dd91d-251d-470a-a062-fa1922dfa9a8";
+const PARTIAL_FLASH_CHARACTERISTIC = "e97d3b10-251d-470a-a062-fa1922dfa9a8";
+const MICROBIT_RESET_COMMAND = 0xff;
 const REGION_INFO_COMMAND = 0x0;
 const FLASH_COMMAND = 0x1;
 
@@ -38,6 +37,21 @@ export const enum PacketState {
 export class PartialFlashingService {
   constructor(private device: Device) {}
 
+  async startNotifications(options?: TimeoutOptions) {
+    await this.device.startNotifications(
+      PARTIAL_FLASHING_SERVICE,
+      PARTIAL_FLASH_CHARACTERISTIC,
+      options
+    );
+  }
+
+  async stopNotifications() {
+    await this.device.stopNotifications(
+      PARTIAL_FLASHING_SERVICE,
+      PARTIAL_FLASH_CHARACTERISTIC
+    );
+  }
+
   async resetToMode(mode: MicroBitMode): Promise<void> {
     await BleClient.writeWithoutResponse(
       this.device.deviceId,
@@ -53,7 +67,6 @@ export class PartialFlashingService {
         PARTIAL_FLASHING_SERVICE,
         PARTIAL_FLASH_CHARACTERISTIC,
         numbersToDataView([REGION_INFO_COMMAND, region]),
-        WriteType.NoResponse,
         REGION_INFO_COMMAND
       )
     );
@@ -105,7 +118,6 @@ export class PartialFlashingService {
         packetNumber,
         packetInBatch
       ),
-      WriteType.NoResponse,
       FLASH_COMMAND,
       (notificationValue: Uint8Array) =>
         notificationValue[1] === PacketState.Success ||

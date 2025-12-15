@@ -1,17 +1,13 @@
 import MemoryMap from "nrf-intel-hex";
 import { delay } from "../utils";
 import { Device, DisconnectError } from "./bluetooth";
-import {
-  PARTIAL_FLASH_CHARACTERISTIC,
-  PARTIAL_FLASHING_SERVICE,
-} from "./constants";
+import { findMakeCodeRegionInMemoryMap } from "./flashing-makecode";
 import { FlashProgressStage, Progress } from "./model";
 import {
   PacketState,
   PartialFlashingService,
   RegionId,
 } from "./partial-flashing-service";
-import { findMakeCodeRegionInMemoryMap } from "./flashing-makecode";
 
 export enum PartialFlashResult {
   Success = "Success",
@@ -26,21 +22,16 @@ const partialFlash = async (
   appHex: string,
   progress: Progress
 ): Promise<PartialFlashResult> => {
-  await device.startNotifications(
-    PARTIAL_FLASHING_SERVICE,
-    PARTIAL_FLASH_CHARACTERISTIC
-  );
+  const pf = new PartialFlashingService(device);
+  await pf.startNotifications();
 
   const result = await device.raceDisconnectAndTimeout(
-    partialFlashInternal(device, appHex, progress),
+    partialFlashInternal(device, pf, appHex, progress),
     { timeout: 30_000, actionName: "partial flash" }
   );
 
   try {
-    await device.stopNotifications(
-      PARTIAL_FLASHING_SERVICE,
-      PARTIAL_FLASH_CHARACTERISTIC
-    );
+    await pf.stopNotifications();
   } catch (e) {
     // V1 disconnects quickly after a partial flash.
     if (!(e instanceof DisconnectError)) {
@@ -53,25 +44,24 @@ const partialFlash = async (
 
 const partialFlashInternal = async (
   device: Device,
+  pf: PartialFlashingService,
   appHex: string,
   progress: Progress
 ): Promise<PartialFlashResult> => {
-  console.log("Partial flash");
+  device.log("Partial flash");
   progress(FlashProgressStage.Partial);
 
   const memoryMap = MemoryMap.fromHex(appHex);
   try {
-    const pf = new PartialFlashingService(device);
-
     const deviceCodeRegion = await pf.getRegionInfo(RegionId.MakeCode);
     if (deviceCodeRegion === null) {
-      console.log("Could not read code region");
+      device.log("Could not read code region");
       return PartialFlashResult.AttemptFullFlash;
     }
 
     const deviceDalRegion = await pf.getRegionInfo(RegionId.Dal);
     if (deviceDalRegion === null) {
-      console.log("Could not read DAL region");
+      device.log("Could not read DAL region");
       return PartialFlashResult.AttemptFullFlash;
     }
 
@@ -80,18 +70,18 @@ const partialFlashInternal = async (
       deviceCodeRegion
     );
     if (fileCodeRegion === null) {
-      console.log("No partial flash data");
+      device.log("No partial flash data");
       return PartialFlashResult.AttemptFullFlash;
     }
 
     if (fileCodeRegion.hash !== deviceDalRegion.hash) {
-      console.log(
+      device.log(
         `DAL hash comparison failed. Hex: ${fileCodeRegion.hash} vs device: ${deviceDalRegion}`
       );
       return PartialFlashResult.AttemptFullFlash;
     }
     if (deviceCodeRegion.start !== fileCodeRegion.start) {
-      console.log("Code start address doesn't match");
+      device.log("Code start address doesn't match");
       return PartialFlashResult.AttemptFullFlash;
     }
 
@@ -125,7 +115,7 @@ const partialFlashInternal = async (
           );
           if (result === PacketState.Retransmit) {
             // Retry the whole 64 bytes.
-            console.log(`Retransmit requested at offset ${offset}`);
+            device.log(`Retransmit requested at offset ${offset}`);
             continue outer;
           } else {
             progress(

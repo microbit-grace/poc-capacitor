@@ -1,5 +1,8 @@
 import MemoryMap from "nrf-intel-hex";
+import { delay } from "../utils";
 import { Device } from "./bluetooth";
+import { DfuService, NORDIC_DFU_SERVICE } from "./dfu-service";
+import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
 import {
   DeviceVersion,
   FlashProgressStage,
@@ -7,17 +10,6 @@ import {
   Progress,
 } from "./model";
 import { flashDfu } from "./nordic-dfu";
-import {
-  BleClient,
-  numbersToDataView,
-} from "@capacitor-community/bluetooth-le";
-import { refreshServicesForV1IfDesiredServiceMissing } from "./flashing-v1";
-import {
-  MICROBIT_DFU_CHARACTERISTIC,
-  MICROBIT_DFU_SERVICE,
-  NORDIC_DFU_SERVICE,
-} from "./constants";
-import { delay } from "../utils";
 
 /**
  * Perform a full flash via Nordic's DFU service.
@@ -33,14 +25,20 @@ export async function fullFlash(
   appHex: string,
   progress: Progress
 ): Promise<FlashResult> {
-  console.log("Full flash");
+  device.log("Full flash");
   progress(FlashProgressStage.Full);
   const { deviceId } = device;
 
   try {
     if (deviceVersion === DeviceVersion.V1) {
-      const rebootRequested = await requestRebootToBootloaderV1Only(deviceId);
-      if (!rebootRequested) {
+      device.log("Rebooting V1 to bootloader");
+
+      const dfuService = new DfuService(device);
+      try {
+        await dfuService.requestRebootToBootloader();
+      } catch (e) {
+        device.log("Failed to request reboot to bootloader");
+        device.error(e);
         return FlashResult.FullFlashFailed;
       }
 
@@ -52,7 +50,7 @@ export async function fullFlash(
         device.log(
           "Device did not disconnect automatically, disconnecting manually"
         );
-        await BleClient.disconnect(deviceId);
+        await device.disconnect();
       }
 
       // Give device time to disconnect and reboot into bootloader mode
@@ -66,32 +64,17 @@ export async function fullFlash(
       );
     }
   } finally {
-    // The service opens its own connection.
-    await BleClient.disconnect(deviceId);
+    // The Nordic code opens its own connection.
+    await device.disconnect();
   }
 
   const appBin = createAppBin(appHex, deviceVersion);
   if (appBin === null) {
-    console.log("Invalid hex (app bin case)");
+    device.log("Invalid hex (app bin case)");
     return FlashResult.InvalidHex;
   }
-  console.log(`Extracted app bin: ${appBin.length} bytes`);
+  device.log(`Extracted app bin: ${appBin.length} bytes`);
   return flashDfu(device, deviceVersion, appBin, progress);
-}
-
-async function requestRebootToBootloaderV1Only(deviceId: string) {
-  try {
-    await BleClient.write(
-      deviceId,
-      MICROBIT_DFU_SERVICE,
-      MICROBIT_DFU_CHARACTERISTIC,
-      numbersToDataView([0x01])
-    );
-    return true;
-  } catch (e) {
-    console.error(e);
-    return false;
-  }
 }
 
 const createAppBin = (
