@@ -165,17 +165,28 @@ const HomeScreen: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: "20px", textAlign: "center" }}>
-      <h1>micro:bit bluetooth test app</h1>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        height: "100%",
+        width: "100%",
+      }}
+    >
       <div
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: "40px",
-          maxWidth: "300px",
-          margin: "20px auto",
+          height: "100%",
+          width: "100%",
+          padding: "20px",
+          maxWidth: "600px",
+          alignItems: "start",
         }}
       >
+        <h1>micro:bit test app</h1>
+        <h2 style={{ marginTop: "30px", marginBottom: "10px" }}>Open apps</h2>
         <button
           onClick={() => navigate("/makecode")}
           style={{
@@ -186,10 +197,12 @@ const HomeScreen: React.FC = () => {
             borderRadius: "5px",
             cursor: "pointer",
             fontSize: "16px",
+            width: "300px",
           }}
         >
-          Open MakeCode
+          MakeCode
         </button>
+        <h2 style={{ marginTop: "30px", marginBottom: "10px" }}>Flash a hex</h2>
         <div style={{ display: "flex", gap: "10px" }}>
           <select
             onChange={handleHexSelectionChange}
@@ -227,25 +240,25 @@ const HomeScreen: React.FC = () => {
             Flash .hex file
           </button>
         </div>
-      </div>
-      <input
-        type="file"
-        ref={fileInputRef}
-        style={{ display: "none" }}
-        accept=".hex"
-        onChange={handleFileSelected}
-      />
-      {open && (
-        <Content
-          step={step}
-          setStep={setStep}
-          handleClose={handleClose}
-          handleFlash={handleFlash}
-          deviceName={deviceName}
-          setDeviceName={setDeviceName}
-          platform={platform}
+        <input
+          type="file"
+          ref={fileInputRef}
+          style={{ display: "none" }}
+          accept=".hex"
+          onChange={handleFileSelected}
         />
-      )}
+        {open && (
+          <Content
+            step={step}
+            setStep={setStep}
+            handleClose={handleClose}
+            handleFlash={handleFlash}
+            deviceName={deviceName}
+            setDeviceName={setDeviceName}
+            platform={platform}
+          />
+        )}
+      </div>
     </div>
   );
 };

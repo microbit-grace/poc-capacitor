@@ -1,13 +1,13 @@
 import {
   createWebBluetoothConnection,
   createUniversalHexFlashDataSource,
-  type FlashProgressCallback,
+  type ProgressCallback,
 } from "@microbit/microbit-connection";
 
 export async function flash(
   deviceName: string,
   hexStr: string,
-  progress: FlashProgressCallback
+  progress: ProgressCallback
 ): Promise<void> {
   const connection = createWebBluetoothConnection();
 

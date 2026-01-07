@@ -1,8 +1,8 @@
 import { useCallback, useState } from "react";
 import { flash } from "../flashing";
 import {
-  FlashProgressStage,
-  FlashProgressCallback,
+  ProgressCallback,
+  ProgressStage,
 } from "@microbit/microbit-connection";
 import { useDeviceName } from "./use-device-name";
 
@@ -31,15 +31,14 @@ export const useFlashing = () => {
     setStep({ name: "initial" });
   }, []);
 
-  const updateStep: FlashProgressCallback = useCallback(
-    (progressStage: FlashProgressStage, progress?: number) => {
+  const updateStep: ProgressCallback = useCallback(
+    (progressStage: ProgressStage, progress?: number) => {
       const message = {
-        [FlashProgressStage.Initialize]: "Checking permissions",
-        [FlashProgressStage.FindDevice]: "Finding device",
-        [FlashProgressStage.Bond]: "Pairing",
-        [FlashProgressStage.Connecting]: "Connecting",
-        [FlashProgressStage.Partial]: "Sending code",
-        [FlashProgressStage.Full]:
+        [ProgressStage.Initializing]: "Checking permissions",
+        [ProgressStage.FindingDevice]: "Finding device",
+        [ProgressStage.Connecting]: "Connecting",
+        [ProgressStage.PartialFlashing]: "Sending code",
+        [ProgressStage.FullFlashing]:
           "Sending code. This can take a while the first time but it will be quicker after that.",
       }[progressStage];
       setStep({ name: "flashing", progress, message });
