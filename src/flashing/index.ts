@@ -1,8 +1,8 @@
 import {
   createWebBluetoothConnection,
   createUniversalHexFlashDataSource,
-  type FlashProgressCallback
-} from '@microbit/microbit-connection';
+  type FlashProgressCallback,
+} from "@microbit/microbit-connection";
 
 export async function flash(
   deviceName: string,
@@ -13,13 +13,13 @@ export async function flash(
 
   try {
     await connection.initialize();
-    connection.setNameFilter(deviceName);  // Just the pattern, e.g., "ABC"
+    connection.setNameFilter(deviceName);
 
     const dataSource = createUniversalHexFlashDataSource(hexStr);
 
     await connection.flash(dataSource, {
       progress,
-      partial: true
+      partial: true,
     });
   } finally {
     connection.dispose();
@@ -27,4 +27,8 @@ export async function flash(
 }
 
 // Re-export types for convenience
-export { FlashProgressStage, DeviceError, FlashDataError } from '@microbit/microbit-connection';
+export {
+  FlashProgressStage,
+  DeviceError,
+  FlashDataError,
+} from "@microbit/microbit-connection";
