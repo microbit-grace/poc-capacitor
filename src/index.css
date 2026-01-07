@@ -65,7 +65,7 @@ p > button {
   padding: 0;
   background-color: transparent;
   font-weight: normal;
-  color: #747bff; 
+  color: #747bff;
 }
 
 @media (prefers-color-scheme: light) {

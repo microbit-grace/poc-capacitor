@@ -7,27 +7,36 @@ import { useFlashing } from "../hooks/use-flashing";
 import Content from "../components/Content";
 
 const starterProject = {
-    text: {
-      "main.blocks":
-        '<xml xmlns="https://developers.google.com/blockly/xml"><variables></variables><block type="pxt-on-start" x="20" y="20"><statement name="HANDLER"><block type="basic_show_icon"><field name="i">IconNames.Heart</field></block></statement></block></xml>',
-      "main.ts": "basic.showIcon(IconNames.Heart)\n",
-      "README.md": " ",
-      "pxt.json": JSON.stringify({
-        name: "Untitled",
-        dependencies: {
-          core: "*",
-          radio: "*",
-        },
-        description: "",
-        files: ["main.blocks", "main.ts", "README.md"],
-        preferredEditor: "blocksprj",
-      }),
-    },
-  } as MakeCodeProject;
+  text: {
+    "main.blocks":
+      '<xml xmlns="https://developers.google.com/blockly/xml"><variables></variables><block type="pxt-on-start" x="20" y="20"><statement name="HANDLER"><block type="basic_show_icon"><field name="i">IconNames.Heart</field></block></statement></block></xml>',
+    "main.ts": "basic.showIcon(IconNames.Heart)\n",
+    "README.md": " ",
+    "pxt.json": JSON.stringify({
+      name: "Untitled",
+      dependencies: {
+        core: "*",
+        radio: "*",
+      },
+      description: "",
+      files: ["main.blocks", "main.ts", "README.md"],
+      preferredEditor: "blocksprj",
+    }),
+  },
+} as MakeCodeProject;
 
 const MakeCodeView = () => {
   const platform = Capacitor.getPlatform();
-  const { step, setStep, startFlashing, open, handleClose, handleFlash, deviceName, setDeviceName } = useFlashing();
+  const {
+    step,
+    setStep,
+    startFlashing,
+    open,
+    handleClose,
+    handleFlash,
+    deviceName,
+    setDeviceName,
+  } = useFlashing();
   const navigate = useNavigate();
 
   const initialProject = useCallback(async () => [starterProject], []);
@@ -40,7 +49,7 @@ const MakeCodeView = () => {
   );
 
   const handleBack = useCallback(() => {
-    navigate('/');
+    navigate("/");
   }, [navigate]);
 
   if (platform === "web") {
@@ -73,9 +82,19 @@ const MakeCodeView = () => {
           onBack={handleBack}
         />
       </div>
-      {open && <Content step={step} setStep={setStep} handleClose={handleClose} handleFlash={handleFlash} deviceName={deviceName} setDeviceName={setDeviceName} platform={platform} />}
+      {open && (
+        <Content
+          step={step}
+          setStep={setStep}
+          handleClose={handleClose}
+          handleFlash={handleFlash}
+          deviceName={deviceName}
+          setDeviceName={setDeviceName}
+          platform={platform}
+        />
+      )}
     </>
   );
-}
+};
 
 export default MakeCodeView;

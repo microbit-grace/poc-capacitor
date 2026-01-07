@@ -1,6 +1,6 @@
-import { Preferences } from '@capacitor/preferences';
+import { Preferences } from "@capacitor/preferences";
 
-const DEVICE_NAME_KEY = 'microbit_device_name';
+const DEVICE_NAME_KEY = "microbit_device_name";
 
 export const deviceStorage = {
   /**

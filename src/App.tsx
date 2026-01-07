@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import HomeScreen from "./components/HomeScreen";
 import MakeCodeView from "./components/MakeCodeView";
-import './App.css';
+import "./App.css";
 
 function App() {
   return (
@@ -15,4 +15,3 @@ function App() {
 }
 
 export default App;
-
