@@ -4,8 +4,8 @@ import { MakeCodeFrame, MakeCodeProject } from "@microbit/makecode-embed";
 import { ReactNode, useCallback, useState } from "react";
 import "./App.css";
 import BluetoothPatternInput from "./components/BluetoothPatternInput";
-import { flash } from "./flashing";
-import { FlashProgressStage, FlashResult, Progress } from "./flashing/model";
+import { flash, FlashProgressStage, DeviceError, FlashDataError } from "./flashing";
+import type { FlashProgressCallback } from "@microbit/microbit-connection";
 import { useDeviceName } from "./hooks/use-device-name";
 
 const starterProject = {
@@ -46,7 +46,7 @@ function App() {
     setStep({ name: "initial" });
   }, []);
 
-  const updateStep: Progress = useCallback((progressStage, progress) => {
+  const updateStep: FlashProgressCallback = useCallback((progressStage, progress) => {
     const message = {
       [FlashProgressStage.Initialize]: "Checking permissions",
       [FlashProgressStage.FindDevice]: "Finding device",
@@ -74,80 +74,116 @@ function App() {
     if (!deviceName) {
       throw new Error("Device name not set!");
     }
-    const flashResult = await flash(deviceName, hex.hex, updateStep);
-    if (flashResult === FlashResult.Success) {
-      setStep({
-        name: "success",
-      });
-      return;
-    }
-    const errorMessage = {
-      [FlashResult.MissingPermissions]: (
-        <p>
-          The app requires Bluetooth permissions.{" "}
-          {platform === "android" && (
-            <button onClick={() => BleClient.openLocationSettings()}>
-              Location should be enabled.
-            </button>
-          )}
-        </p>
-      ),
-      [FlashResult.BluetoothDisabled]:
-        platform === "android" ? (
-          <p>
-            Please{" "}
-            <button onClick={() => BleClient.openBluetoothSettings()}>
-              enable Bluetooth in the Settings app
-            </button>
-            .
-          </p>
-        ) : (
-          <p>
-            Please enable Bluetooth in the Settings and in the{" "}
-            <button onClick={() => BleClient.openAppSettings()}>
-              app's settings
-            </button>
-            .
-          </p>
-        ),
-      [FlashResult.DeviceNotFound]: (
-        <p>
-          Failed to find a micro:bit that matches the pattern you entered.
-          Please try again.
-        </p>
-      ),
-      [FlashResult.FailedToConnect]: (
-        <p>
-          Failed to connect to your micro:bit.{" "}
-          {platform === "ios"
-            ? "Please forget your micro:bit in Bluetooth settings and try again."
-            : "Please try again."}{" "}
-          Ensure your micro:bit is showing the pattern and your phone has
-          Bluetooth enabled.
-        </p>
-      ),
-      [FlashResult.InvalidHex]: <p>The program (.hex) is invalid."</p>,
-      [FlashResult.PartialFlashFailed]: (
-        <p>
-          Partial flashing failed. Please try again. If that fails, program the
-          micro:bit from a computer with a USB cable then try again with the
-          app.
-        </p>
-      ),
-      [FlashResult.FullFlashFailed]: (
-        <p>
-          Full flashing failed. Please try again. If that fails, program the
-          micro:bit from a computer with a USB cable then try again with the
-          app.
-        </p>
-      ),
-      [FlashResult.Cancelled]: <p>Cancelled</p>,
-    }[flashResult];
 
-    setStep({
-      name: "flash-error",
-      children: errorMessage,
-    });
+    try {
+      await flash(deviceName, hex.hex, updateStep);
+      setStep({ name: "success" });
+    } catch (error) {
+      let errorMessage: ReactNode;
+
+      if (error instanceof DeviceError) {
+        switch (error.code) {
+          case "bluetooth-missing-permissions":
+            errorMessage = (
+              <p>
+                The app requires Bluetooth permissions.{" "}
+                {platform === "android" && (
+                  <button onClick={() => BleClient.openLocationSettings()}>
+                    Location should be enabled.
+                  </button>
+                )}
+              </p>
+            );
+            break;
+          case "bluetooth-disabled":
+            errorMessage =
+              platform === "android" ? (
+                <p>
+                  Please{" "}
+                  <button onClick={() => BleClient.openBluetoothSettings()}>
+                    enable Bluetooth in the Settings app
+                  </button>
+                  .
+                </p>
+              ) : (
+                <p>
+                  Please enable Bluetooth in the Settings and in the{" "}
+                  <button onClick={() => BleClient.openAppSettings()}>
+                    app's settings
+                  </button>
+                  .
+                </p>
+              );
+            break;
+          case "no-device-selected":
+            errorMessage = <p>Cancelled</p>;
+            break;
+          case "timeout-error":
+          case "device-disconnected":
+            errorMessage = (
+              <p>
+                Failed to find a micro:bit that matches the pattern you entered.
+                Please try again.
+              </p>
+            );
+            break;
+          case "bluetooth-connection-failed":
+            errorMessage = (
+              <p>
+                Failed to connect to your micro:bit.{" "}
+                {platform === "ios"
+                  ? "Please forget your micro:bit in Bluetooth settings and try again."
+                  : "Please try again."}{" "}
+                Ensure your micro:bit is showing the pattern and your phone has
+                Bluetooth enabled.
+              </p>
+            );
+            break;
+          case "flash-partial-failed":
+            errorMessage = (
+              <p>
+                Partial flashing failed. Please try again. If that fails, program the
+                micro:bit from a computer with a USB cable then try again with the
+                app.
+              </p>
+            );
+            break;
+          case "flash-full-failed":
+            errorMessage = (
+              <p>
+                Full flashing failed. Please try again. If that fails, program the
+                micro:bit from a computer with a USB cable then try again with the
+                app.
+              </p>
+            );
+            break;
+          case "flash-cancelled":
+            errorMessage = <p>Cancelled</p>;
+            break;
+          default:
+            console.warn("Unmapped error code:", error.code);
+            errorMessage = (
+              <p>
+                An unexpected error occurred. Please try again.
+              </p>
+            );
+        }
+      } else if (error instanceof FlashDataError) {
+        errorMessage = <p>The program (.hex) is invalid.</p>;
+      } else {
+        console.error("Unexpected error:", error);
+        errorMessage = (
+          <p>
+            An unexpected error occurred. Please try again.
+          </p>
+        );
+      }
+
+      setStep({
+        name: "flash-error",
+        children: errorMessage,
+      });
+    }
   }, [deviceName, hex, platform, updateStep]);
 
   if (platform === "web") {
@@ -254,7 +290,7 @@ function App() {
                   disabled: true,
                 }}
               >
-                {step.progress && <p>Progress: {step.progress} %</p>}
+                {step.progress !== undefined && <p>Progress: {Math.round(step.progress * 100)} %</p>}
                 <p>{step.message}</p>
               </Content>
             )}
