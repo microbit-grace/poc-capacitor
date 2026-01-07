@@ -25,10 +25,3 @@ export async function flash(
     connection.dispose();
   }
 }
-
-// Re-export types for convenience
-export {
-  FlashProgressStage,
-  DeviceError,
-  FlashDataError,
-} from "@microbit/microbit-connection";
