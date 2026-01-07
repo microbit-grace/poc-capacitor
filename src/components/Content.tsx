@@ -31,6 +31,7 @@ const Content = ({
             width: "100%",
             position: "absolute",
             top: 0,
+            left: 0,
             background: "white",
           }}
         >
@@ -91,6 +92,7 @@ const Content = ({
             width: "100%",
             position: "absolute",
             top: 0,
+            left: 0,
             background: "white",
           }}
         >
@@ -155,6 +157,7 @@ const Content = ({
             width: "100%",
             position: "absolute",
             top: 0,
+            left: 0,
             background: "white",
           }}
         >
@@ -220,6 +223,7 @@ const Content = ({
             width: "100%",
             position: "absolute",
             top: 0,
+            left: 0,
             background: "white",
           }}
         >
@@ -274,6 +278,7 @@ const Content = ({
             width: "100%",
             position: "absolute",
             top: 0,
+            left: 0,
             background: "white",
           }}
         >
@@ -321,6 +326,7 @@ const Content = ({
             width: "100%",
             position: "absolute",
             top: 0,
+            left: 0,
             background: "white",
           }}
         >

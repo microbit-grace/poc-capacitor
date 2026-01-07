@@ -172,6 +172,7 @@ const HomeScreen: React.FC = () => {
         alignItems: "center",
         height: "100%",
         width: "100%",
+        position: "relative",
       }}
     >
       <div
@@ -247,18 +248,18 @@ const HomeScreen: React.FC = () => {
           accept=".hex"
           onChange={handleFileSelected}
         />
-        {open && (
-          <Content
-            step={step}
-            setStep={setStep}
-            handleClose={handleClose}
-            handleFlash={handleFlash}
-            deviceName={deviceName}
-            setDeviceName={setDeviceName}
-            platform={platform}
-          />
-        )}
       </div>
+      {open && (
+        <Content
+          step={step}
+          setStep={setStep}
+          handleClose={handleClose}
+          handleFlash={handleFlash}
+          deviceName={deviceName}
+          setDeviceName={setDeviceName}
+          platform={platform}
+        />
+      )}
     </div>
   );
 };

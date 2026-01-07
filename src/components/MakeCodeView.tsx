@@ -71,17 +71,15 @@ const MakeCodeView = () => {
   }
 
   return (
-    <>
-      <div style={{ height: "100%", width: "100%" }}>
-        <MakeCodeFrame
-          style={{ height: "100%", width: "100%" }}
-          controller={2}
-          loading="eager"
-          initialProjects={initialProject}
-          onDownload={handleDownload}
-          onBack={handleBack}
-        />
-      </div>
+    <div style={{ height: "100%", width: "100%", position: "relative" }}>
+      <MakeCodeFrame
+        style={{ height: "100%", width: "100%" }}
+        controller={2}
+        loading="eager"
+        initialProjects={initialProject}
+        onDownload={handleDownload}
+        onBack={handleBack}
+      />
       {open && (
         <Content
           step={step}
@@ -93,7 +91,7 @@ const MakeCodeView = () => {
           platform={platform}
         />
       )}
-    </>
+    </div>
   );
 };
 
