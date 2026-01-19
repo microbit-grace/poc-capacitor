@@ -56,6 +56,11 @@ export const useFlashing = () => {
     try {
       await flash(connection, deviceName, hex.hex, updateStep);
       setStep({ name: "success" });
+
+      // If we try to reconnect too soon then we'll time out as it'll still be booting.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      console.log("connect after flash!")
+      await connection.connect()
     } catch (error) {
       setStep({ name: "flash-error", children: (error as Error).message });
     }
