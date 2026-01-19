@@ -1,10 +1,8 @@
 import { useCallback, useState } from "react";
 import { flash } from "../flashing";
-import {
-  ProgressCallback,
-  ProgressStage,
-} from "@microbit/microbit-connection";
+import { ProgressCallback, ProgressStage } from "@microbit/microbit-connection";
 import { useDeviceName } from "./use-device-name";
+import { useConnection } from "./use-connection";
 
 export type Step =
   | {
@@ -25,6 +23,7 @@ export const useFlashing = () => {
   const [open, setOpen] = useState<boolean>(false);
   const [step, setStep] = useState<Step>({ name: "initial" });
   const [hex, setHex] = useState<null | { name: string; hex: string }>(null);
+  const { connection } = useConnection();
 
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -55,12 +54,17 @@ export const useFlashing = () => {
     }
 
     try {
-      await flash(deviceName, hex.hex, updateStep);
+      await flash(connection, deviceName, hex.hex, updateStep);
       setStep({ name: "success" });
+
+      // If we try to reconnect too soon then we'll time out as it'll still be booting.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      console.log("connect after flash!")
+      await connection.connect()
     } catch (error) {
       setStep({ name: "flash-error", children: (error as Error).message });
     }
-  }, [deviceName, hex, updateStep]);
+  }, [connection, deviceName, hex, updateStep]);
 
   const startFlashing = useCallback(
     (download: { name: string; hex: string }) => {
